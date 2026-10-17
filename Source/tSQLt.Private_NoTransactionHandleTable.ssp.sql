@@ -9,6 +9,9 @@ CREATE PROCEDURE tSQLt.Private_NoTransactionHandleTable
 AS
 BEGIN
   DECLARE @cmd NVARCHAR(MAX);
+  DECLARE @RestoreEntryTrancount INT;
+  DECLARE @RestoreSavepoint CHAR(32);
+  DECLARE @RestoreSavepointCreated BIT = 0;
   BEGIN TRY
     IF (OBJECT_ID(@FullTableName) IS NULL AND @TableAction <> 'Hide')
     BEGIN
@@ -51,23 +54,34 @@ BEGIN
     BEGIN
       IF (@TableAction = 'Restore')
       BEGIN
-        BEGIN TRAN;
-          DECLARE @BackupTableName TABLE(TableName NVARCHAR(MAX)); 
-          DELETE FROM #TableBackupLog OUTPUT DELETED.BackupName INTO @BackupTableName WHERE OriginalName = @FullTableName;
-          IF(EXISTS(SELECT 1 FROM @BackupTableName AS BTN))
+        SET @RestoreEntryTrancount = @@TRANCOUNT;
+        IF (@RestoreEntryTrancount = 0)
+        BEGIN
+          BEGIN TRAN;
+        END;
+        ELSE
+        BEGIN
+          -- Preserve the caller's transaction if a recoverable restore error occurs.
+          SET @RestoreSavepoint = REPLACE(CONVERT(CHAR(36), NEWID()), '-', '');
+          SAVE TRAN @RestoreSavepoint;
+          SET @RestoreSavepointCreated = 1;
+        END;
+        DECLARE @BackupTableName TABLE(TableName NVARCHAR(MAX));
+        DELETE FROM #TableBackupLog OUTPUT DELETED.BackupName INTO @BackupTableName WHERE OriginalName = @FullTableName;
+        IF(EXISTS(SELECT 1 FROM @BackupTableName AS BTN))
+        BEGIN
+          SET @cmd = 'DELETE FROM ' + @FullTableName + ';';
+          IF (EXISTS(SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@FullTableName) AND is_identity = 1))
           BEGIN
-            SET @cmd = 'DELETE FROM ' + @FullTableName + ';';
-            IF (EXISTS(SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@FullTableName) AND is_identity = 1))
-            BEGIN
-              SET @cmd = @cmd + 'SET IDENTITY_INSERT ' + @FullTableName + ' ON;';
-            END;
-            SET @cmd = @cmd + 'INSERT INTO ' + @FullTableName +'(';
-            DECLARE @ColumnList NVARCHAR(MAX) = STUFF((SELECT ','+QUOTENAME(name) FROM sys.columns WHERE object_id = OBJECT_ID(@FullTableName) AND is_computed = 0 ORDER BY column_id FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),1,1,'');
-            SET @cmd = @cmd + @ColumnList;
-            SET @cmd = @cmd + ') SELECT ' + @ColumnList + ' FROM ' + (SELECT TableName FROM @BackupTableName)+';';
-            EXEC(@cmd);
+            SET @cmd = @cmd + 'SET IDENTITY_INSERT ' + @FullTableName + ' ON;';
           END;
-        COMMIT;
+          SET @cmd = @cmd + 'INSERT INTO ' + @FullTableName +'(';
+          DECLARE @ColumnList NVARCHAR(MAX) = STUFF((SELECT ','+QUOTENAME(name) FROM sys.columns WHERE object_id = OBJECT_ID(@FullTableName) AND is_computed = 0 ORDER BY column_id FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),1,1,'');
+          SET @cmd = @cmd + @ColumnList;
+          SET @cmd = @cmd + ') SELECT ' + @ColumnList + ' FROM ' + (SELECT TableName FROM @BackupTableName)+';';
+          EXEC(@cmd);
+        END;
+        IF (@RestoreEntryTrancount = 0) COMMIT;
       END;
       ELSE IF (@TableAction = 'Truncate')
       BEGIN
@@ -94,6 +108,14 @@ BEGIN
     DECLARE @ErrorMessage NVARCHAR(MAX) = ERROR_MESSAGE();
     DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
     DECLARE @ErrorState INT = ERROR_STATE();
+    IF (@RestoreEntryTrancount = 0 AND XACT_STATE() <> 0)
+    BEGIN
+      ROLLBACK;
+    END;
+    ELSE IF (@RestoreSavepointCreated = 1 AND XACT_STATE() = 1)
+    BEGIN
+      ROLLBACK TRAN @RestoreSavepoint;
+    END;
     RAISERROR('tSQLt is in an unknown state: Stopping execution. (%s | Procedure: %s | Line: %i)', @ErrorSeverity, @ErrorState, @ErrorMessage, @ErrorProcedure, @ErrorLine);
   END CATCH;
 END;
