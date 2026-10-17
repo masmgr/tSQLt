@@ -13,4 +13,40 @@ tSQLt allows you to implement unit tests in T-SQL. This is important as you do n
 
 tSQLt is licensed under Apache 2.0 (https://github.com/tSQLt-org/tSQLt/blob/master/Build/License.txt)
 
+## Asserting procedure calls
+
+Apply `SpyProcedure` before exercising the code under test, then assert against
+its call log:
+
+```sql
+EXEC tSQLt.SpyProcedure @ProcedureName = N'dbo.Target';
+EXEC tSQLt.AssertProcedureNotCalled @ProcedureName = N'dbo.Target';
+
+EXEC dbo.Target;
+EXEC tSQLt.AssertProcedureCalled @ProcedureName = N'dbo.Target';
+EXEC tSQLt.AssertProcedureCalled
+    @ProcedureName = N'dbo.Target',
+    @ExpectedCallCount = 1,
+    @Message = N'Order submission: ';
+```
+
+`AssertProcedureCalled` takes `@ProcedureName NVARCHAR(MAX)`,
+`@ExpectedCallCount BIGINT = NULL`, and `@Message NVARCHAR(MAX) = N''`, in that
+order. An omitted or NULL count requires at least one call; a non-negative count
+requires an exact match, including zero. `AssertProcedureNotCalled` takes
+`@ProcedureName` and `@Message` and requires zero calls. Mismatches fail the test
+and report the quoted procedure name, expected condition, and actual count,
+preceded by the supplied message.
+
+The procedure must have been spied on in the current database. Unqualified and
+quoted names are supported, as is qualification with the current database name.
+Server-qualified names, other databases, negative counts, unspied procedures,
+and missing or invalid spy log tables raise severity-16 usage errors.
+
+Counts reflect rows currently retained in the procedure's `_SpyProcedureLog`,
+including when `@CommandToExecute` or `@CallOriginal = 1` is used. Logging occurs
+before either behavior executes, so counts do not guarantee successful
+completion. Deleting log rows changes the count; applying `SpyProcedure` again
+starts a new log. These assertions do not compare arguments or execution order.
+
 
