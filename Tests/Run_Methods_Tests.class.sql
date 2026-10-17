@@ -1488,6 +1488,62 @@ BEGIN
     EXEC tSQLt.AssertEqualsTable '#Expected','#TestClassesForRunCursor';
 END;
 GO
+CREATE PROC Run_Methods_Tests.[test Private_GetCursorForRunNew detects authorized classes created after Reset]
+AS
+BEGIN
+  EXEC tSQLt_testutil.RemoveTestClassPropertyFromAllExistingClasses;
+  EXEC ('CREATE SCHEMA [Old Authorized Class] AUTHORIZATION [tSQLt.TestClass];');
+  EXEC tSQLt.Reset;
+  EXEC ('CREATE SCHEMA [New Authorized Class] AUTHORIZATION [tSQLt.TestClass];');
+  EXEC tSQLt.NewTestClass 'New Extended Property Class';
+
+  CREATE TABLE #TestClassesForRunCursor(Name NVARCHAR(MAX));
+  EXEC tSQLt.Private_GetCursorForRunNew;
+
+  SELECT TOP(0) * INTO #Expected FROM #TestClassesForRunCursor;
+  INSERT INTO #Expected VALUES('New Authorized Class'),('New Extended Property Class');
+  EXEC tSQLt.AssertEqualsTable '#Expected','#TestClassesForRunCursor';
+END;
+GO
+CREATE PROC Run_Methods_Tests.[test Private_GetCursorForRunNew detects classes recreated with NewTestClass after Reset]
+AS
+BEGIN
+  EXEC tSQLt_testutil.RemoveTestClassPropertyFromAllExistingClasses;
+  EXEC tSQLt.NewTestClass 'Recreated Class';
+  EXEC tSQLt.Reset;
+  EXEC tSQLt.NewTestClass 'Recreated Class';
+
+  CREATE TABLE #TestClassesForRunCursor(Name NVARCHAR(MAX));
+  EXEC tSQLt.Private_GetCursorForRunNew;
+
+  SELECT TOP(0) * INTO #Expected FROM #TestClassesForRunCursor;
+  INSERT INTO #Expected VALUES('Recreated Class');
+  EXEC tSQLt.AssertEqualsTable '#Expected','#TestClassesForRunCursor';
+END;
+GO
+CREATE PROC Run_Methods_Tests.[test RunNew executes authorized classes until the next Reset]
+AS
+BEGIN
+  CREATE TABLE #Actual (Id INT);
+  EXEC tSQLt.Reset;
+  EXEC ('CREATE SCHEMA [Authorized Class] AUTHORIZATION [tSQLt.TestClass];');
+  EXEC ('
+    --[@'+'tSQLt:NoTransaction](DEFAULT)
+    CREATE PROCEDURE [Authorized Class].[test records execution]
+    AS INSERT INTO #Actual VALUES(1);
+  ');
+  EXEC tSQLt.SetSummaryError 0;
+
+  EXEC tSQLt.RunNew;
+  EXEC tSQLt.RunNew;
+  EXEC tSQLt.Reset;
+  EXEC tSQLt.RunNew;
+
+  SELECT TOP(0) * INTO #Expected FROM #Actual;
+  INSERT INTO #Expected VALUES(1),(1);
+  EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';
+END;
+GO
 CREATE PROC Run_Methods_Tests.[test Privat_RunNew calls Private_RunCursor with correct cursor]
 AS
 BEGIN
@@ -2342,10 +2398,9 @@ BEGIN
   ');
   EXEC tSQLt.FakeTable @TableName = 'tSQLt.TestClasses';
 
-  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_NewTestClassList';
+  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_PreviousTestClassList';
 
   EXEC('INSERT INTO tSQLt.TestClasses(Name) VALUES(''a class with a '''' in the middle'');');
-  EXEC('INSERT INTO tSQLt.Private_NewTestClassList(ClassName) VALUES(''a class with a '''' in the middle'');');
 
   EXEC tSQLt.SetSummaryError 0;
 

@@ -20,7 +20,7 @@ BEGIN
 
   SELECT TOP(0) A.* INTO #Expected FROM #Actual A RIGHT JOIN #Actual X ON 1=0;
   INSERT INTO #Expected
-    SELECT '[tSQLt].[Private_NewTestClassList]','Hide' UNION ALL
+    SELECT '[tSQLt].[Private_PreviousTestClassList]','Hide' UNION ALL
     SELECT '[tSQLt].[Run_LastExecution]',       'Hide' UNION ALL
     SELECT '[tSQLt].[Private_Configurations]',  'Restore' UNION ALL
     SELECT '[tSQLt].[CaptureOutputLog]',        'Truncate'  UNION ALL
