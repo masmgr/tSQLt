@@ -5,6 +5,7 @@ CREATE PROCEDURE tSQLt.DropClass
     @ClassName NVARCHAR(MAX)
 AS
 BEGIN
+    DECLARE @DroppedClassName NVARCHAR(MAX) = SCHEMA_NAME(ISNULL(SCHEMA_ID(@ClassName), SCHEMA_ID(PARSENAME(@ClassName,1))));
 /*SnipStart: CreateDropClassStatement.ps1*/
     DECLARE @Cmd NVARCHAR(MAX);
 
@@ -81,6 +82,10 @@ BEGIN
 
     EXEC(@Cmd);
 /*SnipEnd: CreateDropClassStatement.ps1*/
+
+    -- A class recreated after Reset is new again, however it gets recreated.
+    DELETE FROM tSQLt.Private_PreviousTestClassList
+     WHERE ClassName = @DroppedClassName;
 END;
 ---Build-
 GO

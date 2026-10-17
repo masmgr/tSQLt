@@ -1521,6 +1521,23 @@ BEGIN
   EXEC tSQLt.AssertEqualsTable '#Expected','#TestClassesForRunCursor';
 END;
 GO
+CREATE PROC Run_Methods_Tests.[test Private_GetCursorForRunNew detects classes dropped and recreated with AUTHORIZATION after Reset]
+AS
+BEGIN
+  EXEC tSQLt_testutil.RemoveTestClassPropertyFromAllExistingClasses;
+  EXEC ('CREATE SCHEMA [Recreated Authorized Class] AUTHORIZATION [tSQLt.TestClass];');
+  EXEC tSQLt.Reset;
+  EXEC tSQLt.DropClass '[Recreated Authorized Class]';
+  EXEC ('CREATE SCHEMA [Recreated Authorized Class] AUTHORIZATION [tSQLt.TestClass];');
+
+  CREATE TABLE #TestClassesForRunCursor(Name NVARCHAR(MAX));
+  EXEC tSQLt.Private_GetCursorForRunNew;
+
+  SELECT TOP(0) * INTO #Expected FROM #TestClassesForRunCursor;
+  INSERT INTO #Expected VALUES('Recreated Authorized Class');
+  EXEC tSQLt.AssertEqualsTable '#Expected','#TestClassesForRunCursor';
+END;
+GO
 CREATE PROC Run_Methods_Tests.[test RunNew executes authorized classes until the next Reset]
 AS
 BEGIN
