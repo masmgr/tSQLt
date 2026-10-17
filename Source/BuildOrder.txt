@@ -71,6 +71,7 @@ tSQLt.Private_CleanUp.ssp.sql
 tSQLt.Private_AssertNoSideEffects_GenerateCommand.sfn.sql
 tSQLt.Private_AssertNoSideEffects.ssp.sql
 Run_Methods.sql
+Case_Methods.sql
 tSQLt.Private_SysTypes.svw.sql
 tSQLt.Private_GetFullTypeName.sfn.sql
 tSQLt.Private_SysIndexes.svw.sql
