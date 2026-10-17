@@ -1,5 +1,32 @@
 EXEC tSQLt.NewTestClass 'AnnotationNoTransactionTests';
 GO
+CREATE PROCEDURE AnnotationNoTransactionTests.[test NoTransaction test using FakeTable records success and restores original table]
+AS
+BEGIN
+  EXEC tSQLt.NewTestClass 'MyInnerTests';
+  CREATE TABLE MyInnerTests.TestTable(Id INT);
+  INSERT INTO MyInnerTests.TestTable VALUES(42);
+  EXEC('
+    --[@'+'tSQLt:NoTransaction](DEFAULT)
+    CREATE PROCEDURE MyInnerTests.[test1]
+    AS
+    BEGIN
+      EXEC tSQLt.FakeTable ''MyInnerTests.TestTable'';
+      EXEC tSQLt.AssertEquals @Expected = 1, @Actual = 1;
+      EXEC tSQLt.AssertEmptyTable ''MyInnerTests.TestTable'';
+    END;
+  ');
+  DECLARE @EntryTrancount INT = @@TRANCOUNT;
+
+  EXEC tSQLt.Run 'MyInnerTests.[test1]';
+
+  EXEC tSQLt.AssertEquals @Expected = @EntryTrancount, @Actual = @@TRANCOUNT;
+  DECLARE @ActualResult NVARCHAR(MAX) = (SELECT Result FROM tSQLt.TestResult);
+  EXEC tSQLt.AssertEqualsString @Expected = 'Success', @Actual = @ActualResult;
+  DECLARE @ActualId INT = (SELECT Id FROM MyInnerTests.TestTable);
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @ActualId;
+END;
+GO
 /*-----------------------------------------------------------------------------------------------*/
 GO
 CREATE PROCEDURE AnnotationNoTransactionTests.[test runs test without transaction]

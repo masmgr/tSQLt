@@ -100,7 +100,8 @@ BEGIN
   BEGIN CATCH
     IF (@RestoreTransactionStarted = 1 AND XACT_STATE() <> 0)
     BEGIN
-      -- A doomed transaction cannot be rolled back to a savepoint.
+      -- Preserve committable caller work with a savepoint. A doomed transaction
+      -- cannot use a savepoint: roll it back in full so cleanup can record results.
       IF (@RestoreEntryTrancount = 0 OR XACT_STATE() = -1)
         ROLLBACK TRAN;
       ELSE
