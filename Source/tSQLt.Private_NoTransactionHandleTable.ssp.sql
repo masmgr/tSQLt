@@ -9,6 +9,9 @@ CREATE PROCEDURE tSQLt.Private_NoTransactionHandleTable
 AS
 BEGIN
   DECLARE @cmd NVARCHAR(MAX);
+  DECLARE @RestoreEntryTrancount INT;
+  DECLARE @RestoreTransactionStarted BIT = 0;
+  DECLARE @RestoreSavepoint VARCHAR(32) = REPLACE(CONVERT(VARCHAR(36),NEWID()),'-','');
   BEGIN TRY
     IF (OBJECT_ID(@FullTableName) IS NULL AND @TableAction <> 'Hide')
     BEGIN
@@ -51,7 +54,12 @@ BEGIN
     BEGIN
       IF (@TableAction = 'Restore')
       BEGIN
-        BEGIN TRAN;
+        SET @RestoreEntryTrancount = @@TRANCOUNT;
+        IF (@RestoreEntryTrancount = 0)
+          BEGIN TRAN;
+        ELSE
+          SAVE TRAN @RestoreSavepoint;
+        SET @RestoreTransactionStarted = 1;
           DECLARE @BackupTableName TABLE(TableName NVARCHAR(MAX)); 
           DELETE FROM #TableBackupLog OUTPUT DELETED.BackupName INTO @BackupTableName WHERE OriginalName = @FullTableName;
           IF(EXISTS(SELECT 1 FROM @BackupTableName AS BTN))
@@ -67,7 +75,8 @@ BEGIN
             SET @cmd = @cmd + ') SELECT ' + @ColumnList + ' FROM ' + (SELECT TableName FROM @BackupTableName)+';';
             EXEC(@cmd);
           END;
-        COMMIT;
+        IF (@RestoreEntryTrancount = 0) COMMIT;
+        SET @RestoreTransactionStarted = 0;
       END;
       ELSE IF (@TableAction = 'Truncate')
       BEGIN
@@ -89,6 +98,14 @@ BEGIN
     END;
   END TRY
   BEGIN CATCH
+    IF (@RestoreTransactionStarted = 1 AND XACT_STATE() <> 0)
+    BEGIN
+      -- A doomed transaction cannot be rolled back to a savepoint.
+      IF (@RestoreEntryTrancount = 0 OR XACT_STATE() = -1)
+        ROLLBACK TRAN;
+      ELSE
+        ROLLBACK TRAN @RestoreSavepoint;
+    END;
     DECLARE @ErrorLine INT = ERROR_LINE();
     DECLARE @ErrorProcedure NVARCHAR(MAX) = ERROR_PROCEDURE();
     DECLARE @ErrorMessage NVARCHAR(MAX) = ERROR_MESSAGE();

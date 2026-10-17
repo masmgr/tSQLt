@@ -1,5 +1,141 @@
 EXEC tSQLt.NewTestClass 'Private_NoTransactionHandleTableTests';
 GO
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[CleanUp restore tables]
+AS
+BEGIN
+  IF OBJECT_ID('Private_NoTransactionHandleTableTests.RestoreTarget') IS NOT NULL
+    DROP TABLE Private_NoTransactionHandleTableTests.RestoreTarget;
+  IF OBJECT_ID('Private_NoTransactionHandleTableTests.RestoreBackup') IS NOT NULL
+    DROP TABLE Private_NoTransactionHandleTableTests.RestoreBackup;
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[Assert failed restore rolls back]
+  @DoomTransaction BIT,
+  @StartTransaction BIT = 0
+AS
+BEGIN
+  CREATE TABLE Private_NoTransactionHandleTableTests.RestoreTarget (Id INT CONSTRAINT RestoreTarget_Check CHECK (Id > 0));
+  CREATE TABLE Private_NoTransactionHandleTableTests.RestoreBackup (Id INT);
+  CREATE TABLE #TableBackupLog(OriginalName NVARCHAR(MAX), BackupName NVARCHAR(MAX));
+  INSERT INTO Private_NoTransactionHandleTableTests.RestoreTarget VALUES(1);
+  INSERT INTO Private_NoTransactionHandleTableTests.RestoreBackup VALUES(-1);
+  INSERT INTO #TableBackupLog VALUES('Private_NoTransactionHandleTableTests.RestoreTarget','Private_NoTransactionHandleTableTests.RestoreBackup');
+
+  DECLARE @EntryTrancount INT = @@TRANCOUNT;
+  IF (@StartTransaction = 1) BEGIN TRAN;
+  IF (@DoomTransaction = 1) SET XACT_ABORT ON;
+  ELSE SET XACT_ABORT OFF;
+
+  DECLARE @ErrorMessage NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC tSQLt.Private_NoTransactionHandleTable @Action = 'Reset', @FullTableName = 'Private_NoTransactionHandleTableTests.RestoreTarget', @TableAction = 'Restore';
+  END TRY
+  BEGIN CATCH
+    SET @ErrorMessage = ERROR_MESSAGE();
+  END CATCH;
+
+  DECLARE @ActualTrancount INT = @@TRANCOUNT;
+  DECLARE @ActualXactState INT = XACT_STATE();
+  DECLARE @ExpectedTrancount INT = CASE WHEN @DoomTransaction = 1 THEN 0 ELSE @EntryTrancount + @StartTransaction END;
+  DECLARE @ExpectedXactState INT = CASE WHEN @ExpectedTrancount = 0 THEN 0 ELSE 1 END;
+  -- Release only the transaction opened by this helper before making assertions.
+  IF (@StartTransaction = 1 AND @@TRANCOUNT > @EntryTrancount) ROLLBACK;
+
+  EXEC tSQLt.AssertEquals @Expected = @ExpectedTrancount, @Actual = @ActualTrancount;
+  EXEC tSQLt.AssertEquals @Expected = @ExpectedXactState, @Actual = @ActualXactState;
+  EXEC tSQLt.AssertLike @ExpectedPattern = '%tSQLt is in an unknown state:%RestoreTarget_Check%', @Actual = @ErrorMessage;
+  DECLARE @ActualId INT = (SELECT Id FROM Private_NoTransactionHandleTableTests.RestoreTarget);
+  EXEC tSQLt.AssertEquals @Expected = 1, @Actual = @ActualId;
+  DECLARE @BackupLogCount INT = (SELECT COUNT(*) FROM #TableBackupLog);
+  EXEC tSQLt.AssertEquals @Expected = 1, @Actual = @BackupLogCount;
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+--[@tSQLt:NoTransaction]('[Private_NoTransactionHandleTableTests].[CleanUp restore tables]')
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[test failed restore does not leak its transaction]
+AS
+BEGIN
+  EXEC Private_NoTransactionHandleTableTests.[Assert failed restore rolls back] @DoomTransaction = 0;
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[test failed restore preserves committable caller transaction and backup log]
+AS
+BEGIN
+  EXEC Private_NoTransactionHandleTableTests.[Assert failed restore rolls back] @DoomTransaction = 0;
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+--[@tSQLt:NoTransaction]('[Private_NoTransactionHandleTableTests].[CleanUp restore tables]')
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[test failed restore rolls back its doomed transaction]
+AS
+BEGIN
+  EXEC Private_NoTransactionHandleTableTests.[Assert failed restore rolls back] @DoomTransaction = 1;
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+--[@tSQLt:NoTransaction]('[Private_NoTransactionHandleTableTests].[CleanUp restore tables]')
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[test failed restore rolls back doomed caller transaction]
+AS
+BEGIN
+  EXEC Private_NoTransactionHandleTableTests.[Assert failed restore rolls back] @DoomTransaction = 1, @StartTransaction = 1;
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+--[@tSQLt:NoTransaction]('[Private_NoTransactionHandleTableTests].[CleanUp restore tables]')
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[test successful restore commits its transaction]
+AS
+BEGIN
+  CREATE TABLE Private_NoTransactionHandleTableTests.RestoreTarget (Id INT);
+  CREATE TABLE Private_NoTransactionHandleTableTests.RestoreBackup (Id INT);
+  CREATE TABLE #TableBackupLog(OriginalName NVARCHAR(MAX), BackupName NVARCHAR(MAX));
+  INSERT INTO Private_NoTransactionHandleTableTests.RestoreTarget VALUES(1);
+  INSERT INTO Private_NoTransactionHandleTableTests.RestoreBackup VALUES(2);
+  INSERT INTO #TableBackupLog VALUES('Private_NoTransactionHandleTableTests.RestoreTarget','Private_NoTransactionHandleTableTests.RestoreBackup');
+
+  EXEC tSQLt.Private_NoTransactionHandleTable @Action = 'Reset', @FullTableName = 'Private_NoTransactionHandleTableTests.RestoreTarget', @TableAction = 'Restore';
+
+  DECLARE @ActualTrancount INT = @@TRANCOUNT;
+  DECLARE @ActualXactState INT = XACT_STATE();
+  EXEC tSQLt.AssertEquals @Expected = 0, @Actual = @ActualTrancount;
+  EXEC tSQLt.AssertEquals @Expected = 0, @Actual = @ActualXactState;
+  DECLARE @ActualId INT = (SELECT Id FROM Private_NoTransactionHandleTableTests.RestoreTarget);
+  EXEC tSQLt.AssertEquals @Expected = 2, @Actual = @ActualId;
+  EXEC tSQLt.AssertEmptyTable '#TableBackupLog';
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+--[@tSQLt:NoTransaction]('[Private_NoTransactionHandleTableTests].[CleanUp restore tables]')
+CREATE PROCEDURE Private_NoTransactionHandleTableTests.[test missing backup does not leak restore transaction]
+AS
+BEGIN
+  CREATE TABLE Private_NoTransactionHandleTableTests.RestoreTarget (Id INT);
+  CREATE TABLE #TableBackupLog(OriginalName NVARCHAR(MAX), BackupName NVARCHAR(MAX));
+  INSERT INTO #TableBackupLog VALUES('Private_NoTransactionHandleTableTests.RestoreTarget','Private_NoTransactionHandleTableTests.MissingBackup');
+
+  DECLARE @ErrorMessage NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC tSQLt.Private_NoTransactionHandleTable @Action = 'Reset', @FullTableName = 'Private_NoTransactionHandleTableTests.RestoreTarget', @TableAction = 'Restore';
+  END TRY
+  BEGIN CATCH
+    SET @ErrorMessage = ERROR_MESSAGE();
+  END CATCH;
+
+  DECLARE @ActualTrancount INT = @@TRANCOUNT;
+  DECLARE @ActualXactState INT = XACT_STATE();
+  EXEC tSQLt.AssertEquals @Expected = 0, @Actual = @ActualTrancount;
+  EXEC tSQLt.AssertEquals @Expected = 0, @Actual = @ActualXactState;
+  EXEC tSQLt.AssertLike @ExpectedPattern = '%tSQLt is in an unknown state:%MissingBackup%', @Actual = @ErrorMessage;
+END;
+GO
 /*-----------------------------------------------------------------------------------------------*/
 GO
 CREATE PROCEDURE Private_NoTransactionHandleTableTests.[test errors if Action is not an acceptable value]
