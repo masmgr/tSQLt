@@ -117,6 +117,50 @@ BEGIN
 END;
 GO
 
+CREATE PROCEDURE AssertEqualsTableTests.[test equal varchar values containing percent signs succeed]
+AS
+BEGIN
+  CREATE TABLE #expected (value VARCHAR(10));
+  CREATE TABLE #actual (value VARCHAR(10));
+  INSERT INTO #expected
+    SELECT '%' UNION ALL SELECT '%%' UNION ALL SELECT '%s' UNION ALL SELECT '%d' UNION ALL SELECT '100%';
+  INSERT INTO #actual SELECT value FROM #expected;
+
+  EXEC tSQLt.AssertEqualsTable '#expected', '#actual';
+END;
+GO
+
+CREATE PROCEDURE AssertEqualsTableTests.[test unequal varchar values containing percent signs preserve the failure message]
+AS
+BEGIN
+  CREATE TABLE #expected (value VARCHAR(10));
+  CREATE TABLE #actual (value VARCHAR(10));
+  INSERT INTO #expected VALUES ('%');
+  INSERT INTO #actual VALUES ('%s');
+
+  CREATE TABLE #difference ([_m_] CHAR(1), value VARCHAR(10));
+  INSERT INTO #difference
+    SELECT '<', '%' UNION ALL SELECT '>', '%s';
+  DECLARE @ExpectedMessage NVARCHAR(MAX);
+  EXEC tSQLt.TableToText @TableName = '#difference', @OrderBy = '[_m_]', @txt = @ExpectedMessage OUTPUT;
+  SET @ExpectedMessage = '100% different'+CHAR(13)+CHAR(10)+@ExpectedMessage;
+
+  DECLARE @ErrorMessage NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC tSQLt.AssertEqualsTable '#expected', '#actual', @FailMsg = '100% different';
+  END TRY
+  BEGIN CATCH
+    SET @ErrorMessage = ERROR_MESSAGE();
+  END CATCH;
+
+  EXEC tSQLt.AssertEqualsString 'tSQLt.Failure', @ErrorMessage;
+
+  DECLARE @ActualMessage NVARCHAR(MAX);
+  SELECT @ActualMessage = Msg FROM #TestMessage;
+  EXEC tSQLt.AssertEqualsString @ExpectedMessage, @ActualMessage;
+END;
+GO
+
 CREATE PROCEDURE AssertEqualsTableTests.[test same single row in each table]
 AS
 BEGIN
