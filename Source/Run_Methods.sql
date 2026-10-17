@@ -393,7 +393,14 @@ END;
 GO
 
 CREATE PROCEDURE tSQLt.Private_RunTestClass
-  @TestClassName NVARCHAR(MAX)
+  @TestClassName NVARCHAR(MAX),
+  @Seed INT = NULL,
+  @TestOrder XML = NULL,
+  @ExecutedOrder XML = NULL OUTPUT,
+  @RecordExecution BIT = 0,
+  @RunError NVARCHAR(MAX) = NULL OUTPUT,
+  @RunErrorSeverity INT = NULL OUTPUT,
+  @RunErrorState INT = NULL OUTPUT
 AS
 BEGIN
     DECLARE @TestCaseName NVARCHAR(MAX);
@@ -401,6 +408,80 @@ BEGIN
     DECLARE @SetupProcName NVARCHAR(MAX);
     DECLARE @CleanUpProcName NVARCHAR(MAX);
     EXEC tSQLt.Private_GetClassHelperProcedureName @TestClassId, @SetupProcName OUT, @CleanUpProcName OUT;
+
+    IF @RecordExecution = 1
+    BEGIN
+      DECLARE @ClassName NVARCHAR(128) = SCHEMA_NAME(@TestClassId);
+      DECLARE @Tests TABLE(Ordinal INT NOT NULL PRIMARY KEY, TestName NVARCHAR(128) NOT NULL);
+      IF @TestOrder IS NOT NULL
+      BEGIN
+        IF @TestOrder.value('count(/*)', 'INT') <> 1
+           OR @TestOrder.exist('/TestOrder[@version="1"][@class=sql:variable("@ClassName")]') <> 1
+           OR @TestOrder.exist('/TestOrder/*[not(self::Test)]') = 1
+           OR @TestOrder.exist('/TestOrder/Test[not(@ordinal) or not(@name) or *]') = 1
+        BEGIN
+          RAISERROR('Invalid test order: expected version 1 and the requested class.',16,10);
+          RETURN -1;
+        END;
+        -- Keep conversion and length checks separate so invalid input cannot be truncated.
+        DECLARE @Input TABLE(Ordinal INT, TestName NVARCHAR(MAX));
+        BEGIN TRY
+          INSERT @Input(Ordinal, TestName)
+            SELECT T.N.value('@ordinal','INT'), T.N.value('@name','NVARCHAR(MAX)')
+              FROM @TestOrder.nodes('/TestOrder/Test') T(N);
+        END TRY
+        BEGIN CATCH
+          RAISERROR('Invalid test order: ordinals must be integers in the INT range.',16,10);
+          RETURN -1;
+        END CATCH;
+        IF EXISTS(SELECT 1 FROM @Input WHERE Ordinal < 1 OR DATALENGTH(TestName) > 256)
+           OR EXISTS(SELECT Ordinal FROM @Input GROUP BY Ordinal HAVING COUNT(*) > 1)
+           OR EXISTS(SELECT TestName FROM @Input GROUP BY TestName HAVING COUNT(*) > 1)
+           OR ISNULL((SELECT MAX(Ordinal) FROM @Input),0) <> (SELECT COUNT(*) FROM @Input)
+           OR EXISTS(
+             SELECT 1 FROM @Input I
+              WHERE NOT EXISTS(SELECT 1 FROM sys.procedures P
+                                WHERE P.schema_id = @TestClassId AND P.name = I.TestName
+                                  AND LOWER(P.name) LIKE 'test%')
+           )
+        BEGIN
+          RAISERROR('Invalid test order: tests must exist in the requested class and have unique, consecutive ordinals starting at 1.',16,10);
+          RETURN -1;
+        END;
+        INSERT @Tests SELECT I.Ordinal, P.name FROM @Input I JOIN sys.procedures P
+          ON P.schema_id = @TestClassId AND P.name = I.TestName;
+      END;
+      ELSE
+      BEGIN
+        INSERT @Tests(Ordinal, TestName)
+          SELECT ROW_NUMBER() OVER(ORDER BY
+                   CASE WHEN @Seed IS NULL THEN CONVERT(VARBINARY(20),NEWID())
+                        ELSE HASHBYTES('SHA1',CONVERT(VARBINARY(4),@Seed)+CONVERT(VARBINARY(256),P.name)) END,
+                   CONVERT(VARBINARY(256),P.name)), P.name
+            FROM sys.procedures P WHERE P.schema_id = @TestClassId AND LOWER(P.name) LIKE 'test%';
+      END;
+      SELECT @ExecutedOrder = (SELECT 1 AS [@version], @ClassName AS [@class] FOR XML PATH('TestOrder'),TYPE);
+      DECLARE @Ordinal INT = 1;
+      DECLARE @Entry XML;
+      BEGIN TRY
+        WHILE EXISTS(SELECT 1 FROM @Tests WHERE Ordinal = @Ordinal)
+        BEGIN
+          SELECT @TestCaseName = QUOTENAME(@ClassName)+'.'+QUOTENAME(TestName),
+                 @Entry = (SELECT @Ordinal AS [@ordinal], TestName AS [@name] FOR XML PATH('Test'),TYPE)
+            FROM @Tests WHERE Ordinal = @Ordinal;
+          SET @ExecutedOrder.modify('insert sql:variable("@Entry") as last into (/TestOrder)[1]');
+          EXEC tSQLt.Private_RunTest @TestCaseName, @SetupProcName, @CleanUpProcName;
+          SET @Ordinal = @Ordinal + 1;
+        END;
+      END TRY
+      BEGIN CATCH
+        -- Hand the error to Private_Run instead of raising it here, so the results of
+        -- the tests that already ran are still output before the error is re-raised.
+        SELECT @RunError = ERROR_MESSAGE(), @RunErrorSeverity = ERROR_SEVERITY(), @RunErrorState = ERROR_STATE();
+        RETURN -2;
+      END CATCH;
+      RETURN;
+    END;
     
     DECLARE @cmd NVARCHAR(MAX) = (
       (
@@ -418,7 +499,11 @@ GO
 
 CREATE PROCEDURE tSQLt.Private_Run
    @TestName NVARCHAR(MAX),
-   @TestResultFormatter NVARCHAR(MAX)
+   @TestResultFormatter NVARCHAR(MAX),
+   @Seed INT = NULL,
+   @TestOrder XML = NULL,
+   @ExecutedOrder XML = NULL OUTPUT,
+   @RecordExecution BIT = 0
 AS
 BEGIN
 SET NOCOUNT ON;
@@ -428,6 +513,12 @@ SET NOCOUNT ON;
     DECLARE @IsTestCase BIT;
     DECLARE @IsSchema BIT;
     DECLARE @SetUp NVARCHAR(MAX);SET @SetUp = NULL;
+
+    IF @RecordExecution = 1 AND (NULLIF(LTRIM(RTRIM(@TestName)),N'') IS NULL OR (@Seed IS NOT NULL AND @TestOrder IS NOT NULL))
+    BEGIN
+      RAISERROR('Execution order requires an explicit test class and cannot combine @Seed with @TestOrder.',16,10);
+      RETURN;
+    END;
     
     SELECT @TestName = TestName FROM tSQLt.Private_GetLastTestNameIfNotProvided(@TestName);
     EXEC tSQLt.Private_SaveTestNameForSession @TestName;
@@ -439,9 +530,25 @@ SET NOCOUNT ON;
            @IsTestCase = isTestCase
       FROM tSQLt.Private_ResolveName(@TestName);
 
+    IF @RecordExecution = 1 AND ISNULL(@IsSchema,0) <> 1
+    BEGIN
+      RAISERROR('Execution order requires an explicit test class.',16,10);
+      RETURN;
+    END;
+
+    DECLARE @RunError NVARCHAR(MAX), @RunErrorSeverity INT, @RunErrorState INT;
     IF @IsSchema = 1
     BEGIN
-        EXEC tSQLt.Private_RunTestClass @FullName;
+        IF @RecordExecution = 1
+        BEGIN
+          DECLARE @ClassRunResult INT;
+          EXEC @ClassRunResult = tSQLt.Private_RunTestClass @FullName, @Seed, @TestOrder, @ExecutedOrder OUTPUT, @RecordExecution,
+               @RunError OUTPUT, @RunErrorSeverity OUTPUT, @RunErrorState OUTPUT;
+          -- Invalid input is rejected before any test runs; there are no results to output.
+          IF @ClassRunResult <> 0 AND @RunError IS NULL RETURN @ClassRunResult;
+        END;
+        ELSE
+          EXEC tSQLt.Private_RunTestClass @FullName;
     END
     
     IF @IsTestCase = 1
@@ -453,7 +560,26 @@ SET NOCOUNT ON;
       EXEC tSQLt.Private_RunTest @FullName, @SetupProcName, @CleanUpProcName;
     END;
 
-    EXEC tSQLt.Private_OutputTestResults @TestResultFormatter;
+    IF @RecordExecution = 1
+    BEGIN
+      BEGIN TRY
+        EXEC tSQLt.Private_OutputTestResults @TestResultFormatter;
+      END TRY
+      BEGIN CATCH
+        -- An error that stopped the run is the root cause; keep it over a formatter error.
+        IF @RunError IS NULL
+          SELECT @RunError = ERROR_MESSAGE(), @RunErrorSeverity = ERROR_SEVERITY(), @RunErrorState = ERROR_STATE();
+      END CATCH;
+      IF @RunError IS NOT NULL
+      BEGIN
+        -- SQL Server does not copy OUTPUT parameters back when an EXEC unwinds to CATCH.
+        SELECT @ExecutedOrder AS ExecutedOrder;
+        RAISERROR('%s',@RunErrorSeverity,@RunErrorState,@RunError);
+        RETURN -1;
+      END;
+    END;
+    ELSE
+      EXEC tSQLt.Private_OutputTestResults @TestResultFormatter;
 END;
 GO
 
@@ -522,7 +648,11 @@ GO
 CREATE PROCEDURE tSQLt.Private_RunMethodHandler
   @RunMethod NVARCHAR(MAX),
   @TestResultFormatter NVARCHAR(MAX) = NULL,
-  @TestName NVARCHAR(MAX) = NULL
+  @TestName NVARCHAR(MAX) = NULL,
+  @Seed INT = NULL,
+  @TestOrder XML = NULL,
+  @ExecutedOrder XML = NULL OUTPUT,
+  @RecordExecution BIT = 0
 AS
 BEGIN
   SELECT @TestResultFormatter = ISNULL(@TestResultFormatter,tSQLt.GetTestResultFormatter());
@@ -530,7 +660,12 @@ BEGIN
   EXEC tSQLt.Private_Init;
   IF(@@ERROR = 0)
   BEGIN  
-    IF(EXISTS(SELECT * FROM sys.parameters AS P WHERE P.object_id = OBJECT_ID(@RunMethod) AND name = '@TestName'))
+    IF @RecordExecution = 1
+    BEGIN
+      EXEC @RunMethod @TestName = @TestName, @TestResultFormatter = @TestResultFormatter,
+           @Seed = @Seed, @TestOrder = @TestOrder, @ExecutedOrder = @ExecutedOrder OUTPUT, @RecordExecution = @RecordExecution;
+    END;
+    ELSE IF(EXISTS(SELECT * FROM sys.parameters AS P WHERE P.object_id = OBJECT_ID(@RunMethod) AND name = '@TestName'))
     BEGIN
       EXEC @RunMethod @TestName = @TestName, @TestResultFormatter = @TestResultFormatter;
     END;
@@ -569,10 +704,21 @@ GO
 
 CREATE PROCEDURE tSQLt.Run
    @TestName NVARCHAR(MAX) = NULL,
-   @TestResultFormatter NVARCHAR(MAX) = NULL
+   @TestResultFormatter NVARCHAR(MAX) = NULL,
+   @Seed INT = NULL,
+   @TestOrder XML = NULL,
+   @ExecutedOrder XML = N'<NotRequested/>' OUTPUT
 AS
 BEGIN
-  EXEC tSQLt.Private_RunMethodHandler @RunMethod = 'tSQLt.Private_Run', @TestResultFormatter = @TestResultFormatter, @TestName = @TestName; 
+  -- A private default marker distinguishes omission from an explicitly supplied NULL OUTPUT.
+  DECLARE @RecordExecution BIT = CASE WHEN @Seed IS NOT NULL OR @TestOrder IS NOT NULL
+      OR @ExecutedOrder IS NULL OR CONVERT(NVARCHAR(MAX),@ExecutedOrder) <> N'<NotRequested/>' THEN 1 ELSE 0 END;
+  SET @ExecutedOrder = NULL;
+  IF @RecordExecution = 1
+    EXEC tSQLt.Private_RunMethodHandler @RunMethod = 'tSQLt.Private_Run', @TestResultFormatter = @TestResultFormatter, @TestName = @TestName,
+         @Seed = @Seed, @TestOrder = @TestOrder, @ExecutedOrder = @ExecutedOrder OUTPUT, @RecordExecution = @RecordExecution;
+  ELSE
+    EXEC tSQLt.Private_RunMethodHandler @RunMethod = 'tSQLt.Private_Run', @TestResultFormatter = @TestResultFormatter, @TestName = @TestName;
 END;
 GO
 CREATE PROCEDURE tSQLt.Private_InputBuffer
