@@ -56,7 +56,8 @@ BEGIN
            SELECT 10, FullName, ItemType
               FROM ConstraintInfo
              UNION ALL
-           SELECT 20, FullName, ItemType
+           /*Sequences must be dropped after tables whose defaults reference them.*/
+           SELECT CASE WHEN ItemType = 'SO' THEN 25 ELSE 20 END, FullName, ItemType
               FROM ObjectInfo
              UNION ALL
            SELECT 30, FullName, ItemType
