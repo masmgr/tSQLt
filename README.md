@@ -13,4 +13,22 @@ tSQLt allows you to implement unit tests in T-SQL. This is important as you do n
 
 tSQLt is licensed under Apache 2.0 (https://github.com/tSQLt-org/tSQLt/blob/master/Build/License.txt)
 
+To remove tSQLt, run `Uninstall.sql` from the download in the database containing
+tSQLt. This standalone script can also clean up an incomplete installation when
+`tSQLt.Uninstall` or its dependencies are missing. It can be run repeatedly, even
+if tSQLt is absent. Use an account with permission to drop the tSQLt objects,
+assembly and database user. User test schemas and server settings are preserved;
+external dependencies or database corruption may require manual intervention.
+
+To test the standalone uninstaller against a local SQL Server with Windows
+authentication, first run the build, then run:
+
+```powershell
+./Build/Tests/Test-Uninstall.ps1 -ServerName '.\SQLEXPRESS'
+```
+
+The test creates and drops its own database. Supply `-InstallScript` with the
+built `tSQLt.class.sql` and `-AssemblyPath` with a built `tSQLtCLR.dll` to also
+test a complete installation, reinstallation, and a leftover CLR assembly.
+
 
