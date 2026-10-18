@@ -13,6 +13,25 @@ BEGIN
 END;
 GO
 
+CREATE PROCEDURE FailTests.[test Fail preserves percent signs in message parameters]
+AS
+BEGIN
+  DECLARE @ErrorMessage NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC tSQLt.Fail '%', '%%', '%s', '%d', '100%';
+  END TRY
+  BEGIN CATCH
+    SET @ErrorMessage = ERROR_MESSAGE();
+  END CATCH;
+
+  EXEC tSQLt.AssertEqualsString 'tSQLt.Failure', @ErrorMessage;
+
+  DECLARE @Actual NVARCHAR(MAX);
+  SELECT @Actual = Msg FROM #TestMessage;
+  EXEC tSQLt.AssertEqualsString '%%%%s%d100%', @Actual;
+END;
+GO
+
 CREATE PROC FailTests.[test Fail rolls back transaction if transaction is unable to be committed]
 AS
 BEGIN
