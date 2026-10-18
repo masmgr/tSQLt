@@ -321,7 +321,7 @@ namespace tSQLtCLR
         }
 
         private static string SqlDateToString(DateTime dtValue) {
-            return String.Format("{0:yyyy-MM-dd}", dtValue);
+            return dtValue.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         private static String SqlDateTimeToString(SqlDateTime dtValue) {
