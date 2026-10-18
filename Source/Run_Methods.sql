@@ -50,7 +50,8 @@ CREATE PROCEDURE tSQLt.Private_RunTest_TestExecution
   @TranName CHAR(32),
   @Result NVARCHAR(MAX) OUTPUT,
   @Msg NVARCHAR(MAX) OUTPUT,
-  @TestEndTime DATETIME2 OUTPUT
+  @TestEndTime DATETIME2 OUTPUT,
+  @CaseId NVARCHAR(128) = NULL
 AS
 BEGIN
   DECLARE @TransactionStartedFlag BIT = 0;
@@ -82,7 +83,13 @@ BEGIN
           EXEC @SetUp;
         END;
 
-        EXEC (@TestExecutionCmd);
+        IF @CaseId IS NULL
+          EXEC (@TestExecutionCmd);
+        ELSE
+        BEGIN
+          SET @TestExecutionCmd = @TestExecutionCmd + N' @CaseId = @Id;';
+          EXEC sys.sp_executesql @TestExecutionCmd, N'@Id NVARCHAR(128)', @Id = @CaseId;
+        END;
 
         IF(EXISTS(SELECT 1 FROM #ExpectException WHERE ExpectException = 1))
         BEGIN
@@ -188,6 +195,9 @@ BEGIN
         SET @Msg = ERROR_MESSAGE();
     END CATCH
 
+    IF @CaseId IS NOT NULL AND @CleanUp IS NOT NULL
+      EXEC tSQLt.Private_CleanUpCmdHandler @CleanUp, @Result OUT, @Msg OUT;
+
     --TODO:NoTran
     ---- Compare @@Trancount, throw up arms if it doesn't match
     --TODO:NoTran
@@ -251,9 +261,16 @@ GO
 CREATE PROCEDURE tSQLt.Private_RunTest
    @TestName NVARCHAR(MAX),
    @SetUp NVARCHAR(MAX) = NULL,
-   @CleanUp NVARCHAR(MAX) = NULL
+   @CleanUp NVARCHAR(MAX) = NULL,
+   @CaseId NVARCHAR(MAX) = NULL,
+   @CaseResultId INT = NULL
 AS
 BEGIN
+    IF @CaseResultId IS NULL AND EXISTS(SELECT 1 FROM tSQLt.Private_CaseTest WHERE TestObjectId = OBJECT_ID(@TestName))
+    BEGIN
+      EXEC tSQLt.Private_RunCases @TestName, @SetUp, @CleanUp, @CaseId;
+      RETURN;
+    END;
     DECLARE @OuterPerimeterTrancount INT = @@TRANCOUNT;
 
     DECLARE @Msg NVARCHAR(MAX); SET @Msg = '';
@@ -289,10 +306,18 @@ BEGIN
            @TestProcName = tSQLt.Private_GetCleanObjectName(@TestName),
            @TestObjectId = OBJECT_ID(@TestName);
            
-    INSERT INTO tSQLt.TestResult(Class, TestCase, TranName, Result) 
-        SELECT @TestClassName, @TestProcName, @TranName, 'A severe error happened during test execution. Test did not finish.'
-        OPTION(MAXDOP 1);
-    SELECT @TestResultId = SCOPE_IDENTITY();
+    IF @CaseResultId IS NULL
+    BEGIN
+      INSERT INTO tSQLt.TestResult(Class, TestCase, TranName, Result)
+          SELECT @TestClassName, @TestProcName, @TranName, 'A severe error happened during test execution. Test did not finish.'
+          OPTION(MAXDOP 1);
+      SELECT @TestResultId = SCOPE_IDENTITY();
+    END;
+    ELSE
+    BEGIN
+      SET @TestResultId = @CaseResultId;
+      UPDATE tSQLt.TestResult SET TestStartTime = SYSDATETIME(), CaseState = 'Running' WHERE Id = @TestResultId;
+    END;
 
     IF(@Verbose = 1)
     BEGIN
@@ -310,6 +335,9 @@ BEGIN
       SET @SkipTestFlag = CASE WHEN EXISTS(SELECT 1 FROM #SkipTest) THEN 1 ELSE 0 END;
       SET @NoTransactionFlag = CASE WHEN EXISTS(SELECT 1 FROM #NoTransaction) THEN 1 ELSE 0 END;
 
+      IF @CaseResultId IS NOT NULL AND @NoTransactionFlag = 1
+        RAISERROR('Case tests require transaction isolation; NoTransaction is not supported.',16,10);
+
       IF(@SkipTestFlag = 0)
       BEGIN
         IF(@NoTransactionFlag = 0)
@@ -325,7 +353,8 @@ BEGIN
           @TranName,
           @Result OUT,
           @Msg OUT,
-          @TestEndTime OUT;
+          @TestEndTime OUT,
+          @CaseId = @CaseId;
 
       END;
       ELSE
@@ -356,17 +385,20 @@ BEGIN
         UPDATE tSQLt.TestResult SET
             Result = @Result,
             Msg = @Msg,
-            TestEndTime = @TestEndTime
+            TestEndTime = CASE WHEN @CaseResultId IS NULL THEN @TestEndTime ELSE SYSDATETIME() END,
+            CaseState = CASE WHEN @CaseResultId IS NULL THEN NULL ELSE 'Completed' END
          WHERE Id = @TestResultId;
     END;
     ELSE
     BEGIN
-        INSERT tSQLt.TestResult(Class, TestCase, TranName, Result, Msg)
+        INSERT tSQLt.TestResult(Class, TestCase, TranName, Result, Msg, CaseId, CaseState, CaseExecutionMode)
         SELECT @TestClassName, 
                @TestProcName,  
                '?', 
                'Error', 
-               'TestResult entry is missing; Original outcome: ' + @Result + ', ' + @Msg;
+               'TestResult entry is missing; Original outcome: ' + @Result + ', ' + @Msg,
+               @CaseId, CASE WHEN @CaseResultId IS NULL THEN NULL ELSE 'Completed' END,
+               CASE WHEN @CaseResultId IS NOT NULL THEN 'Independent' END;
     END;    
 
     IF(@Verbose = 1)
@@ -503,7 +535,8 @@ CREATE PROCEDURE tSQLt.Private_Run
    @Seed INT = NULL,
    @TestOrder XML = NULL,
    @ExecutedOrder XML = NULL OUTPUT,
-   @RecordExecution BIT = 0
+   @RecordExecution BIT = 0,
+   @CaseId NVARCHAR(MAX) = NULL
 AS
 BEGIN
 SET NOCOUNT ON;
@@ -529,6 +562,12 @@ SET NOCOUNT ON;
            @IsSchema = isSchema,
            @IsTestCase = isTestCase
       FROM tSQLt.Private_ResolveName(@TestName);
+
+    IF @CaseId IS NOT NULL AND (@IsTestCase <> 1 OR @IsTestCase IS NULL OR NOT EXISTS(SELECT 1 FROM tSQLt.Private_CaseTest WHERE TestObjectId = OBJECT_ID(@FullName)))
+    BEGIN
+      RAISERROR('CaseId requires a registered case test procedure.',16,10);
+      RETURN;
+    END;
 
     IF @RecordExecution = 1 AND ISNULL(@IsSchema,0) <> 1
     BEGIN
@@ -557,7 +596,7 @@ SET NOCOUNT ON;
       DECLARE @CleanUpProcName NVARCHAR(MAX);
       EXEC tSQLt.Private_GetClassHelperProcedureName @TestClassId, @SetupProcName OUT, @CleanUpProcName OUT;
 
-      EXEC tSQLt.Private_RunTest @FullName, @SetupProcName, @CleanUpProcName;
+      EXEC tSQLt.Private_RunTest @FullName, @SetupProcName, @CleanUpProcName, @CaseId = @CaseId;
     END;
 
     IF @RecordExecution = 1
@@ -656,7 +695,8 @@ CREATE PROCEDURE tSQLt.Private_RunMethodHandler
   @Seed INT = NULL,
   @TestOrder XML = NULL,
   @ExecutedOrder XML = NULL OUTPUT,
-  @RecordExecution BIT = 0
+  @RecordExecution BIT = 0,
+  @CaseId NVARCHAR(MAX) = NULL
 AS
 BEGIN
   SELECT @TestResultFormatter = ISNULL(@TestResultFormatter,tSQLt.GetTestResultFormatter());
@@ -671,7 +711,10 @@ BEGIN
     END;
     ELSE IF(EXISTS(SELECT * FROM sys.parameters AS P WHERE P.object_id = OBJECT_ID(@RunMethod) AND name = '@TestName'))
     BEGIN
-      EXEC @RunMethod @TestName = @TestName, @TestResultFormatter = @TestResultFormatter;
+      IF @CaseId IS NULL
+        EXEC @RunMethod @TestName = @TestName, @TestResultFormatter = @TestResultFormatter;
+      ELSE
+        EXEC @RunMethod @TestName = @TestName, @TestResultFormatter = @TestResultFormatter, @CaseId = @CaseId;
     END;
     ELSE
     BEGIN  
@@ -711,16 +754,24 @@ CREATE PROCEDURE tSQLt.Run
    @TestResultFormatter NVARCHAR(MAX) = NULL,
    @Seed INT = NULL,
    @TestOrder XML = NULL,
-   @ExecutedOrder XML = N'<NotRequested/>' OUTPUT
+   @ExecutedOrder XML = N'<NotRequested/>' OUTPUT,
+   @CaseId NVARCHAR(MAX) = NULL
 AS
 BEGIN
   -- A private default marker distinguishes omission from an explicitly supplied NULL OUTPUT.
   DECLARE @RecordExecution BIT = CASE WHEN @Seed IS NOT NULL OR @TestOrder IS NOT NULL
       OR @ExecutedOrder IS NULL OR CONVERT(NVARCHAR(MAX),@ExecutedOrder) <> N'<NotRequested/>' THEN 1 ELSE 0 END;
   SET @ExecutedOrder = NULL;
+  IF @RecordExecution = 1 AND @CaseId IS NOT NULL
+  BEGIN
+    RAISERROR('CaseId cannot be combined with execution order options.',16,10);
+    RETURN;
+  END;
   IF @RecordExecution = 1
     EXEC tSQLt.Private_RunMethodHandler @RunMethod = 'tSQLt.Private_Run', @TestResultFormatter = @TestResultFormatter, @TestName = @TestName,
          @Seed = @Seed, @TestOrder = @TestOrder, @ExecutedOrder = @ExecutedOrder OUTPUT, @RecordExecution = @RecordExecution;
+  ELSE IF @CaseId IS NOT NULL
+    EXEC tSQLt.Private_RunMethodHandler @RunMethod = 'tSQLt.Private_Run', @TestResultFormatter = @TestResultFormatter, @TestName = @TestName, @CaseId = @CaseId;
   ELSE
     EXEC tSQLt.Private_RunMethodHandler @RunMethod = 'tSQLt.Private_Run', @TestResultFormatter = @TestResultFormatter, @TestName = @TestName;
 END;
@@ -768,7 +819,8 @@ CREATE FUNCTION tSQLt.Private_PrepareTestResultForOutput()
 RETURNS TABLE
 AS
 RETURN
-  SELECT ROW_NUMBER() OVER(ORDER BY Result DESC, Name ASC) No,Name [Test Case Name],
+  SELECT ROW_NUMBER() OVER(ORDER BY Result DESC, Name ASC, CONVERT(VARBINARY(256),CaseId)) No,
+         Name + CASE WHEN CaseId IS NULL THEN N'' ELSE N' [' + CaseId + N'] ' + CaseDisplayName END AS [Test Case Name],
          RIGHT(SPACE(7)+CAST(DATEDIFF(MILLISECOND,TestStartTime,TestEndTime) AS VARCHAR(7)),7) AS [Dur(ms)], Result
     FROM tSQLt.TestResult;
 GO
@@ -824,6 +876,11 @@ GO
 CREATE PROCEDURE tSQLt.XmlResultFormatter
 AS
 BEGIN
+    IF EXISTS(SELECT 1 FROM tSQLt.TestResult WHERE CaseId IS NOT NULL)
+    BEGIN
+      EXEC tSQLt.CaseXmlResultFormatter;
+      RETURN;
+    END;
     DECLARE @XmlOutput XML;
 
     SELECT @XmlOutput = (

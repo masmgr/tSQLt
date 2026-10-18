@@ -9,7 +9,11 @@ CREATE TABLE tSQLt.TestResult(
     Result NVARCHAR(MAX) NULL,
     Msg NVARCHAR(MAX) NULL,
     TestStartTime DATETIME2 NOT NULL CONSTRAINT [DF:TestResult(TestStartTime)] DEFAULT SYSDATETIME(),
-    TestEndTime DATETIME2 NULL
+    TestEndTime DATETIME2 NULL,
+    CaseId NVARCHAR(128) NULL,
+    CaseDisplayName NVARCHAR(512) NULL,
+    CaseState NVARCHAR(20) NULL,
+    CaseExecutionMode NVARCHAR(20) NULL
 );
 GO
 CREATE TABLE tSQLt.Run_LastExecution(

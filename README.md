@@ -11,6 +11,9 @@ tSQLt allows you to implement unit tests in T-SQL. This is important as you do n
 * Tests can be grouped together within a schema – allowing you to organize your tests and use common setup methods
 * Output can be generated in plain text or XML – making it easier to integrate with a continuous integration tool
 
+Opt-in [case execution and reporting](docs/CaseTests.md) adds stable case IDs,
+independent case transactions, case selection, and case-level XML results.
+
 tSQLt is licensed under Apache 2.0 (https://github.com/tSQLt-org/tSQLt/blob/master/Build/License.txt)
 
 ## Recording and replaying test execution order
