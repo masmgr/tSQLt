@@ -52,6 +52,9 @@ BEGIN
         + COALESCE(@Message9, '!NULL!')
         + @WarningMessage;
         
+   -- Do not doom the recovered transaction when the failure crosses the EXEC boundary.
+   -- SQL Server restores the caller's SET options when this procedure exits.
+   SET XACT_ABORT OFF;
    RAISERROR('tSQLt.Failure',16,10);
 END;
 ---Build-
