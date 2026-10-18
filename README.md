@@ -46,6 +46,15 @@ keep each change in its own branch and validate it with CI before merging.
 
 ## Continuous integration
 
+For `NoTransaction` tests, let tSQLt restore its bookkeeping tables and then undo
+test doubles. Calling `tSQLt.UndoTestDoubles` inside a user cleanup procedure can
+delete backups before the framework restores them. This remains a cleanup error;
+the restore handler now resolves its transaction before reporting it. Committable
+caller transactions retain their work through a restore savepoint. A doomed
+caller transaction cannot be partially rolled back and is rolled back in full.
+CI checks the issue #222 examples on fresh connections as well as the restore
+success/failure and caller-transaction regression tests.
+
 The GitHub Actions `CI` workflow runs on pushes to `develop` and `main`, pull
 requests targeting either branch, and manual dispatch. It builds tSQLt with
 `Build/LocalBuild.ps1` and runs the existing validation suite with
