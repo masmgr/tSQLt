@@ -68,12 +68,12 @@ BEGIN
 
     DECLARE @ColumnList NVARCHAR(MAX);
     SELECT @ColumnList = STUFF((SELECT ',' + QUOTENAME(name) +
-                                 CASE WHEN CollationName IS NULL THEN '' ELSE ' COLLATE ' + QUOTENAME(CollationName) END + ' AS ' + QUOTENAME(name)
+                                 CASE WHEN CollationName IS NULL THEN '' ELSE ' COLLATE ' + CollationName END + ' AS ' + QUOTENAME(name)
                                FROM @Columns WHERE name <> '_id_'
                                ORDER BY column_id FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),1,1,'');
     DECLARE @LogColumnList NVARCHAR(MAX);
     SELECT @LogColumnList = STUFF((SELECT ',L.' + QUOTENAME(name) +
-                                    CASE WHEN CollationName IS NULL THEN '' ELSE ' COLLATE ' + QUOTENAME(CollationName) END + ' AS ' + QUOTENAME(name)
+                                    CASE WHEN CollationName IS NULL THEN '' ELSE ' COLLATE ' + CollationName END + ' AS ' + QUOTENAME(name)
                                   FROM @Columns WHERE name <> '_id_'
                                   ORDER BY column_id FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),1,1,'');
     DECLARE @Projection NVARCHAR(MAX) = ISNULL(@ColumnList, '');
