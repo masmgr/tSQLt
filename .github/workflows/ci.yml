@@ -160,11 +160,27 @@ jobs:
             Stop-Transcript
           }
 
+      - name: Test execution-order client results
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/tSQLt-logs/execution-order.log" -Force
+          try {
+            ./Tests/ExecutionOrder.Client.Tests.ps1 `
+              -ServerInstance $env:SQL_SERVER `
+              -Database ("tSQLt_OrderValidation_" + [Guid]::NewGuid().ToString('N')) `
+              -UserName sa `
+              -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force) `
+              -InstallScript "$env:RUNNER_TEMP/tSQLt-uninstall-package/tSQLt.class.sql" `
+              -ResultFile ./Build/output/ExecutionOrder/TestResults_ExecutionOrderClient.xml
+          } finally {
+            Stop-Transcript
+          }
+
       - name: Summarize test results
         if: always()
         shell: pwsh
         run: |
-          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results, ./Build/output/StandaloneUninstall, ./Build/output/Issue222 -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
+          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results, ./Build/output/StandaloneUninstall, ./Build/output/Issue222, ./Build/output/ExecutionOrder -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
           $summary = @("### tSQLt test results (SQL Server ${{ matrix.sqlserver }})", "", "| Suite | Tests | Failures | Errors | Skipped |", "|---|---:|---:|---:|---:|")
           $totalTests = 0
           $totalFailures = 0
@@ -194,6 +210,7 @@ jobs:
             Build/output/Validate/
             Build/output/StandaloneUninstall/
             Build/output/Issue222/
+            Build/output/ExecutionOrder/
             ${{ runner.temp }}/tSQLt-logs/
           if-no-files-found: warn
           retention-days: 30
