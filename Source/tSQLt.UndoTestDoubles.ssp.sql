@@ -224,7 +224,7 @@ BEGIN
                  WHEN L.ParentId IS NULL THEN DC.cmd+';'  
                  ELSE NULL
                END,'')+
-        'EXEC tSQLt.Private_RenameObject '''+REPLACE(QUOTENAME(L.SchemaName),'''','''''')+''','''+REPLACE(QUOTENAME(L.CurrentName),'''','''''')+''','''+REPLACE(L.OriginalName,'''','''''')+''';'
+        'EXEC tSQLt.Private_RenameObject N'''+REPLACE(QUOTENAME(L.SchemaName),'''','''''')+''',N'''+REPLACE(QUOTENAME(L.CurrentName),'''','''''')+''',N'''+REPLACE(L.OriginalName,'''','''''')+''';'
       FROM L
      CROSS APPLY tSQLt.Private_GetDropItemCmd(QUOTENAME(L.SchemaName)+'.'+QUOTENAME(L.OriginalName),L.ObjectType) DC
      ORDER BY L.SortId DESC, L.Id ASC
