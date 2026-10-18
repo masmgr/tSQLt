@@ -2,6 +2,8 @@
 ---Build+
 GO
 SET NOCOUNT ON;
+-- Test classes that already exist at installation are not new to RunNew.
+EXEC tSQLt.Private_ResetNewTestClassList;
 DECLARE @ver NVARCHAR(MAX); 
 DECLARE @match INT; 
 SELECT @ver = '| tSQLt Version: ' + I.Version,

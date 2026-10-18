@@ -21,7 +21,7 @@ BEGIN
     DECLARE @SeparatorWithoutCursor CHAR(1) = '';
     DECLARE @SeparatorWithCursor CHAR(1) = '';
     DECLARE @ParamName sysname;
-    DECLARE @TypeName sysname;
+    DECLARE @TypeName NVARCHAR(MAX);
     DECLARE @IsOutput BIT;
     DECLARE @IsCursorRef BIT;
     DECLARE @IsTableType BIT;

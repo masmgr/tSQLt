@@ -713,6 +713,43 @@ END;
 GO
 CREATE TYPE SpyProcedureTests.TableType1001 AS TABLE(SomeInt INT, SomeVarChar VARCHAR(10));
 GO
+CREATE PROC SpyProcedureTests.[test SpyProcedure preserves long qualified alias type names]
+AS
+BEGIN
+  DECLARE @TypeName sysname = REPLICATE('T', 123) + ']';
+  DECLARE @QualifiedTypeName NVARCHAR(MAX) = 'SpyProcedureTests.' + QUOTENAME(@TypeName);
+  EXEC('CREATE TYPE ' + @QualifiedTypeName + ' FROM INT;');
+  EXEC('CREATE PROCEDURE SpyProcedureTests.LongType @P1 ' + @QualifiedTypeName + ' AS RETURN;');
+
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.LongType';
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.LongType';
+  EXEC @ProcedureName 42;
+
+  DECLARE @Actual INT = (SELECT P1 FROM SpyProcedureTests.LongType_SpyProcedureLog);
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @Actual;
+  DECLARE @ExpectedType INT = TYPE_ID(@QualifiedTypeName);
+  DECLARE @ActualType INT = (SELECT user_type_id FROM sys.parameters WHERE object_id = OBJECT_ID(@ProcedureName) AND parameter_id = 1);
+  EXEC tSQLt.AssertEquals @Expected = @ExpectedType, @Actual = @ActualType;
+END;
+GO
+DECLARE @LongTableTypeName NVARCHAR(MAX) = 'SpyProcedureTests.' + QUOTENAME(REPLICATE('T', 124));
+EXEC('CREATE TYPE ' + @LongTableTypeName + ' AS TABLE(A INT);');
+GO
+CREATE PROC SpyProcedureTests.[test SpyProcedure preserves long qualified table type names]
+AS
+BEGIN
+  DECLARE @TypeName sysname = REPLICATE('T', 124);
+  DECLARE @QualifiedTypeName NVARCHAR(MAX) = 'SpyProcedureTests.' + QUOTENAME(@TypeName);
+  EXEC('CREATE PROCEDURE SpyProcedureTests.LongType @P1 ' + @QualifiedTypeName + ' READONLY AS RETURN;');
+
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.LongType';
+  EXEC('DECLARE @P1 ' + @QualifiedTypeName + '; INSERT INTO @P1 VALUES(42);
+        EXEC SpyProcedureTests.LongType @P1;');
+
+  DECLARE @Actual INT = (SELECT P1.value('(/P1/row/A)[1]','INT') FROM SpyProcedureTests.LongType_SpyProcedureLog);
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @Actual;
+END;
+GO
 CREATE PROC SpyProcedureTests.[test SpyProcedure can have a table type parameter]
 AS
 BEGIN
