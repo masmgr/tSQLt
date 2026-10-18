@@ -1,5 +1,60 @@
 EXEC tSQLt.NewTestClass 'SpyProcedureTests';
 GO
+CREATE PROC SpyProcedureTests.[test CallOriginal preserves a nonzero return status]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.ReturnStatus AS RETURN 37;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.ReturnStatus', @CallOriginal = 1;
+
+  DECLARE @Actual INT;
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.ReturnStatus';
+  EXEC @Actual = @ProcedureName;
+
+  EXEC tSQLt.AssertEquals @Expected = 37, @Actual = @Actual;
+END;
+GO
+CREATE PROC SpyProcedureTests.[test CallOriginal preserves a negative return status]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.ReturnStatus AS RETURN -7;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.ReturnStatus', @CallOriginal = 1;
+
+  DECLARE @Actual INT;
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.ReturnStatus';
+  EXEC @Actual = @ProcedureName;
+
+  EXEC tSQLt.AssertEquals @Expected = -7, @Actual = @Actual;
+END;
+GO
+CREATE PROC SpyProcedureTests.[test return status variable does not collide with procedure parameters]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.ReturnStatus @SpyProcedureReturnValue INT, @SpyProcedureReturnValue1 INT
+        AS RETURN @SpyProcedureReturnValue + @SpyProcedureReturnValue1;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.ReturnStatus', @CallOriginal = 1;
+
+  DECLARE @Actual INT;
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.ReturnStatus';
+  EXEC @Actual = @ProcedureName 12, 25;
+
+  EXEC tSQLt.AssertEquals @Expected = 37, @Actual = @Actual;
+END;
+GO
+CREATE PROC SpyProcedureTests.[test return status variable does not collide with custom command variables]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.ReturnStatus AS RETURN 37;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.ReturnStatus',
+       @CommandToExecute = 'DECLARE @SpyProcedureReturnValue INT; DECLARE @SpyProcedureReturnValue1 INT;',
+       @CallOriginal = 1;
+
+  DECLARE @Actual INT;
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.ReturnStatus';
+  EXEC @Actual = @ProcedureName;
+
+  EXEC tSQLt.AssertEquals @Expected = 37, @Actual = @Actual;
+END;
+GO
 CREATE PROC SpyProcedureTests.[test SpyProcedure should allow tester to not execute behavior of procedure]
 AS
 BEGIN

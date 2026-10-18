@@ -94,6 +94,15 @@ BEGIN
     END;
     SELECT @CreateLogTableStatement = 'CREATE TABLE ' + @LogTableName + ' (' + QUOTENAME(@LogIdentityColumnName) + ' int IDENTITY(1,1) PRIMARY KEY CLUSTERED ' + @TableColTypeList + ');';
 
+    DECLARE @ReturnValueVariableName sysname = '@SpyProcedureReturnValue';
+    DECLARE @ReturnValueVariableSuffix INT = 0;
+    WHILE EXISTS(SELECT 1 FROM sys.parameters WHERE object_id = @ProcedureObjectId AND name = @ReturnValueVariableName)
+       OR CHARINDEX(@ReturnValueVariableName, ISNULL(@CommandToExecute, '')) > 0
+    BEGIN
+      SET @ReturnValueVariableSuffix = @ReturnValueVariableSuffix + 1;
+      SET @ReturnValueVariableName = '@SpyProcedureReturnValue' + CAST(@ReturnValueVariableSuffix AS NVARCHAR(10));
+    END;
+
     SELECT @CreateProcedureStatement = 
              'CREATE PROCEDURE ' + @OriginalProcedureName + ' ' + @ProcParmTypeList + 
              ' AS BEGIN ' + 
@@ -102,10 +111,11 @@ BEGIN
                 ISNULL(@CommandToExecute + ';', '') +
                 CHAR(13)+CHAR(10)+/*CR,LF*/
                 CASE WHEN @CallOriginal = 1 
-                     THEN 'EXEC @SpyProcedureOriginalObjectName ' + @ProcParmListForCall + ';'
-                     ELSE ''
+                     THEN 'DECLARE ' + @ReturnValueVariableName + ' INT;' +
+                          'EXEC ' + @ReturnValueVariableName + ' = @SpyProcedureOriginalObjectName ' + @ProcParmListForCall + ';' +
+                          'RETURN ' + @ReturnValueVariableName + ';'
+                     ELSE 'RETURN;'
                 END +
-             ' RETURN;' +
              ' END;';
     --RAISERROR(@CreateProcedureStatement, 0, 1) WITH NOWAIT;
 
