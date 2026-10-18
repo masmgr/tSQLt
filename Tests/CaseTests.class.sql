@@ -83,6 +83,9 @@ GO
 CREATE PROCEDURE CaseTests.[test legacy NoTransaction tests restore case registrations]
 AS
 BEGIN
+  -- NoTransaction cleanup undoes test doubles. Use the real result table so
+  -- nested cleanup does not replace the fake table owned by this test's SetUp.
+  EXEC tSQLt.UndoTestDoubles;
   EXEC('--[@'+'tSQLt:NoTransaction](DEFAULT)
     CREATE PROCEDURE CaseFixture.[test legacy no transaction] AS DELETE FROM tSQLt.Private_CaseTest;');
   EXEC tSQLt.Run 'CaseFixture.[test legacy no transaction]', 'tSQLt.NullTestResultFormatter';
