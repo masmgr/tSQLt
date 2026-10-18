@@ -21,7 +21,7 @@ BEGIN
     DECLARE @SeparatorWithoutCursor CHAR(1) = '';
     DECLARE @SeparatorWithCursor CHAR(1) = '';
     DECLARE @ParamName sysname;
-    DECLARE @TypeName sysname;
+    DECLARE @TypeName NVARCHAR(MAX);
     DECLARE @IsOutput BIT;
     DECLARE @IsCursorRef BIT;
     DECLARE @IsTableType BIT;
@@ -87,7 +87,12 @@ BEGIN
                               ELSE ' (' + @TableColList + ') SELECT ' + @ProcParmListForInsert
                          END + ';';
                          
-    SELECT @CreateLogTableStatement = 'CREATE TABLE ' + @LogTableName + ' (_id_ int IDENTITY(1,1) PRIMARY KEY CLUSTERED ' + @TableColTypeList + ');';
+    DECLARE @LogIdentityColumnName NVARCHAR(MAX) = '_id_';
+    WHILE EXISTS(SELECT 1 FROM sys.parameters WHERE object_id = @ProcedureObjectId AND is_cursor_ref = 0 AND name = '@' + @LogIdentityColumnName)
+    BEGIN
+      SET @LogIdentityColumnName = @LogIdentityColumnName + '_';
+    END;
+    SELECT @CreateLogTableStatement = 'CREATE TABLE ' + @LogTableName + ' (' + QUOTENAME(@LogIdentityColumnName) + ' int IDENTITY(1,1) PRIMARY KEY CLUSTERED ' + @TableColTypeList + ');';
 
     DECLARE @ReturnValueVariableName sysname = '@SpyProcedureReturnValue';
     DECLARE @ReturnValueVariableSuffix INT = 0;

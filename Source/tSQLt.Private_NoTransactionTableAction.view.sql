@@ -6,7 +6,7 @@ CREATE VIEW tSQLt.Private_NoTransactionTableAction
 AS
 SELECT CAST(Name AS NVARCHAR(MAX)) Name, CAST(Action AS NVARCHAR(MAX)) Action
   FROM(
-    VALUES('[tSQLt].[Private_NewTestClassList]','Hide'),
+    VALUES('[tSQLt].[Private_PreviousTestClassList]','Hide'),
           ('[tSQLt].[Run_LastExecution]','Hide'),
           ('[tSQLt].[Private_Configurations]','Restore'),
           ('[tSQLt].[CaptureOutputLog]','Truncate'),
