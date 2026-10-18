@@ -19,6 +19,23 @@ IF(@@TRANCOUNT>0)ROLLBACK;
 GO
 EXEC tSQLt.NewTestClass 'Private_RenameObjectToUniqueNameTests';
 GO
+CREATE PROCEDURE Private_RenameObjectToUniqueNameTests.[test Private_RenameObject preserves Unicode original and new names]
+AS
+BEGIN
+   DECLARE @OriginalName NVARCHAR(128), @NewName NVARCHAR(128), @Command NVARCHAR(MAX);
+   SET @OriginalName = NCHAR(21517) + N'Original';
+   SET @NewName = NCHAR(21517) + N'Renamed';
+   SET @Command = N'CREATE TABLE Private_RenameObjectToUniqueNameTests.' + QUOTENAME(@OriginalName) + N'(i INT);';
+   EXEC(@Command);
+   DECLARE @ExpectedId INT, @ActualId INT;
+   SET @ExpectedId = OBJECT_ID(N'Private_RenameObjectToUniqueNameTests.' + QUOTENAME(@OriginalName));
+   DECLARE @QuotedOriginalName NVARCHAR(258);
+   SET @QuotedOriginalName = QUOTENAME(@OriginalName);
+   EXEC tSQLt.Private_RenameObject N'Private_RenameObjectToUniqueNameTests', @QuotedOriginalName, @NewName;
+   SET @ActualId = OBJECT_ID(N'Private_RenameObjectToUniqueNameTests.' + QUOTENAME(@NewName));
+   EXEC tSQLt.AssertEquals @ExpectedId, @ActualId;
+END;
+GO
 CREATE PROCEDURE Private_RenameObjectToUniqueNameTests.[test RenameObjectToUniqueName calls Private_MarkObjectBeforeRename to mark old object]
 AS
 BEGIN

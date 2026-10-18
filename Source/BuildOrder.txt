@@ -91,6 +91,9 @@ tSQLt.Private_GenerateCreateProcedureSpyStatement.ssp.sql
 tSQLt.Private_CreateProcedureSpy.ssp.sql
 tSQLt.Private_ValidateProcedureCanBeUsedWithSpyProcedure.ssp.sql
 tSQLt.SpyProcedure.ssp.sql
+tSQLt.Private_GetSpyProcedureCallCount.ssp.sql
+tSQLt.AssertProcedureCalled.ssp.sql
+tSQLt.AssertProcedureNotCalled.ssp.sql
 tSQLt.Private_GetCommaSeparatedColumnList.sfn.sql
 tSQLt.Private_CreateResultTableForCompareTables.ssp.sql
 tSQLt.Private_ValidateThatAllDataTypesInTableAreSupported.ssp.sql
