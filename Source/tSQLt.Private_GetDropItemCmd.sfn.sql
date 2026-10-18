@@ -28,6 +28,7 @@ SELECT
       WHEN 'P' THEN 'PROCEDURE'
       WHEN 'PC' THEN 'PROCEDURE'
       WHEN 'SN' THEN 'SYNONYM'
+      WHEN 'SO' THEN 'SEQUENCE'
       WHEN 'U' THEN 'TABLE'
       WHEN 'V' THEN 'VIEW'
       WHEN 'type' THEN 'TYPE'
@@ -62,7 +63,7 @@ Object type:
   RF = Replication-filter-procedure
 -  S = System base table
   SN = Synonym
-  SO = Sequence object
++  SO = Sequence object
 +  U = Table (user-defined)
 +  V = View
 -  EC = Edge constraint
