@@ -23,6 +23,34 @@ BEGIN
     END
 END;
 GO
+CREATE PROC DropClassTests.[test removes the class from the list of classes that existed at Reset]
+AS
+BEGIN
+    EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_PreviousTestClassList';
+    INSERT INTO tSQLt.Private_PreviousTestClassList(ClassName) VALUES('MyTestClass'),('OtherClass');
+    EXEC('CREATE SCHEMA MyTestClass;');
+
+    EXEC tSQLt.DropClass '[MyTestClass]';
+
+    SELECT ClassName INTO #Actual FROM tSQLt.Private_PreviousTestClassList;
+    SELECT TOP(0) * INTO #Expected FROM #Actual;
+    INSERT INTO #Expected VALUES('OtherClass');
+    EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';
+END;
+GO
+CREATE PROC DropClassTests.[test drops a class when the previous class list is hidden]
+AS
+BEGIN
+    EXEC tSQLt.RemoveObject @ObjectName = 'tSQLt.Private_PreviousTestClassList';
+    EXEC('CREATE SCHEMA MyTestClass;');
+
+    EXEC tSQLt.ExpectNoException;
+    EXEC tSQLt.DropClass 'MyTestClass';
+
+    IF SCHEMA_ID('MyTestClass') IS NOT NULL
+      EXEC tSQLt.Fail 'DropClass did not drop MyTestClass while its bookkeeping table was hidden.';
+END;
+GO
 CREATE PROC DropClassTests.[test removes UDDTs]
 AS
 BEGIN
