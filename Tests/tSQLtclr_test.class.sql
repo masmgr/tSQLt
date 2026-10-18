@@ -16,6 +16,33 @@
 EXEC tSQLt.NewTestClass 'tSQLtclr_test';
 GO
 
+CREATE PROC tSQLtclr_test.[test CaptureOutput preserves large Unicode output in exact order]
+AS
+BEGIN
+  EXEC tSQLt.CaptureOutput N'DECLARE @i INT=1; WHILE @i<=1000
+    BEGIN PRINT CONVERT(NVARCHAR(10),@i)+REPLICATE(NCHAR(21517),80); SET @i=@i+1; END;';
+  DECLARE @Expected NVARCHAR(MAX)=N'', @Actual NVARCHAR(MAX), @i INT=1;
+  WHILE @i<=1000
+  BEGIN
+    SET @Expected=@Expected+CONVERT(NVARCHAR(10),@i)+REPLICATE(NCHAR(21517),80)+NCHAR(13)+NCHAR(10);
+    SET @i=@i+1;
+  END;
+  SELECT @Actual=OutputText FROM tSQLt.CaptureOutputLog;
+  EXEC tSQLt.AssertEqualsStringExact @Expected, @Actual;
+END;
+GO
+CREATE PROC tSQLtclr_test.[test CaptureOutput preserves empty lines Unicode and low severity output]
+AS
+BEGIN
+  EXEC tSQLt.CaptureOutput N'PRINT N''''; PRINT NCHAR(21517); SELECT 1 AS ignored;
+    RAISERROR(N''low%d'',0,1,42); PRINT N''last'';';
+  DECLARE @Expected NVARCHAR(MAX)=NCHAR(13)+NCHAR(10)+NCHAR(21517)+NCHAR(13)+NCHAR(10)
+    +N'low42'+NCHAR(13)+NCHAR(10)+N'last'+NCHAR(13)+NCHAR(10);
+  DECLARE @Actual NVARCHAR(MAX);
+  SELECT @Actual=OutputText FROM tSQLt.CaptureOutputLog;
+  EXEC tSQLt.AssertEqualsStringExact @Expected, @Actual;
+END;
+GO
 CREATE PROC tSQLtclr_test.[test CaptureOutput places the console output of a command into the CaptureOutputLog]
 AS
 BEGIN

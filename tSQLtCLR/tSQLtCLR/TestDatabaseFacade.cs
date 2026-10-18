@@ -10,7 +10,7 @@ namespace tSQLtCLR
     class TestDatabaseFacade : IDisposable
     {
         private SqlConnection connection;
-        private SqlString infoMessage;
+        private StringBuilder infoMessage;
         Boolean disposed = false;
 
         public TestDatabaseFacade()
@@ -30,7 +30,7 @@ namespace tSQLtCLR
 
         public SqlString InfoMessage
         {
-            get { return infoMessage; }
+            get { return infoMessage == null ? SqlString.Null : new SqlString(infoMessage.ToString()); }
         }
 
         private void connect()
@@ -63,7 +63,7 @@ namespace tSQLtCLR
 
         public SqlDataReader executeCommand(SqlString Command)
         {
-            infoMessage = SqlString.Null;
+            infoMessage = null;
             connection.InfoMessage += OnInfoMessage;
             SqlCommand cmd = new SqlCommand();
             
@@ -77,11 +77,11 @@ namespace tSQLtCLR
 
         protected void OnInfoMessage(object sender, SqlInfoMessageEventArgs args)
         {
-            if (infoMessage.IsNull)
+            if (infoMessage == null)
             {
-                infoMessage = "";
+                infoMessage = new StringBuilder();
             }
-            infoMessage += args.Message + "\r\n";
+            infoMessage.Append(args.Message).Append("\r\n");
         }
 
         public void assertEquals(String expectedString, String actualString)
