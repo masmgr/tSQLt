@@ -59,6 +59,15 @@ Failure messages show escaped values and the first differing UTF-16 code unit.
 See [AssertEqualsStringExact](docs/AssertEqualsStringExact.md) for usage and
 diagnostic details.
 
+## Comparing tables by key
+
+Use `tSQLt.AssertEqualsTableByKey` to match rows by an explicitly supplied unique
+key and report changed columns, missing keys, and extra keys. Composite keys and
+NULL key values are supported; duplicate keys are input errors. Actual columns
+absent from Expected are ignored. See
+[AssertEqualsTableByKey](docs/AssertEqualsTableByKey.md) for examples, supported
+types, key syntax, and diagnostic output.
+
 ## Removing tSQLt
 
 To remove tSQLt, run `Uninstall.sql` from the download in the database containing
