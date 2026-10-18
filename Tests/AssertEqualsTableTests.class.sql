@@ -2,6 +2,45 @@ GO
 EXEC tSQLt.NewTestClass 'AssertEqualsTableTests';
 GO
 
+CREATE PROCEDURE AssertEqualsTableTests.[test BINARY differences report hexadecimal values]
+AS
+BEGIN
+  CREATE TABLE #Expected(BinaryColumn BINARY(16));
+  CREATE TABLE #Actual(BinaryColumn BINARY(16));
+  INSERT INTO #Expected VALUES (0x33333333333333333333333333333333);
+  INSERT INTO #Actual VALUES (0xCCCC3333333333333333333333333333);
+
+  DECLARE @FailMessage NVARCHAR(MAX);
+  EXEC tSQLt_testutil.CaptureFailMessage
+    @Command = N'EXEC tSQLt.AssertEqualsTable N''#Expected'', N''#Actual'';',
+    @FailMessage = @FailMessage OUTPUT;
+
+  EXEC tSQLt.AssertLike N'%Unexpected/missing resultset rows!%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%0x33333333333333333333333333333333%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%0xCCCC3333333333333333333333333333%', @FailMessage;
+END;
+GO
+
+CREATE PROCEDURE AssertEqualsTableTests.[test DATE values before 1753 report assertion differences without CLR overflow]
+AS
+BEGIN
+  CREATE TABLE #Expected(DateColumn DATE);
+  CREATE TABLE #Actual(DateColumn DATE);
+  INSERT INTO #Expected VALUES ('0001-01-01'), ('1752-12-31');
+  INSERT INTO #Actual VALUES ('2000-01-01');
+
+  DECLARE @FailMessage NVARCHAR(MAX);
+  EXEC tSQLt_testutil.CaptureFailMessage
+    @Command = N'EXEC tSQLt.AssertEqualsTable N''#Expected'', N''#Actual'';',
+    @FailMessage = @FailMessage OUTPUT;
+
+  EXEC tSQLt.AssertLike N'%Unexpected/missing resultset rows!%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%0001-01-01%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%1752-12-31%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%2000-01-01%', @FailMessage;
+END;
+GO
+
 CREATE PROCEDURE AssertEqualsTableTests.[test left table doesn't exist results in failure]
 AS
 BEGIN
