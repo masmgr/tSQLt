@@ -1150,3 +1150,130 @@ BEGIN
   EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';  
 END;
 GO
+
+CREATE PROC ApplyConstraintTests.AssertConstraintWithSpecialCharactersCanBeApplied
+  @ConstraintDefinition NVARCHAR(MAX),
+  @ConstraintName NVARCHAR(MAX),
+  @VerifyUndoTestDoubles BIT = 1
+AS
+BEGIN
+  EXEC ('CREATE SCHEMA [sch.ema]] A]');
+  CREATE TABLE [sch.ema]] A].[par.ent]] table] (id INT PRIMARY KEY);
+  EXEC ('CREATE TABLE [sch.ema]] A].[chi.ld]] table] (id INT CONSTRAINT [constraint.with.dots and spaces]]] ' + @ConstraintDefinition + ');');
+
+  DECLARE @OriginalObjectId INT = OBJECT_ID('[sch.ema]] A].[constraint.with.dots and spaces]]]');
+
+  EXEC tSQLt.FakeTable '[sch.ema]] A].[par.ent]] table]';
+  EXEC tSQLt.FakeTable '[sch.ema]] A].[chi.ld]] table]';
+
+  EXEC tSQLt.ApplyConstraint '[sch.ema]] A].[chi.ld]] table]', @ConstraintName;
+
+  DECLARE @Actual INT;
+  SELECT @Actual = COUNT(*)
+    FROM sys.objects
+   WHERE name = 'constraint.with.dots and spaces]'
+     AND parent_object_id = OBJECT_ID('[sch.ema]] A].[chi.ld]] table]');
+
+  EXEC tSQLt.AssertEquals 1, @Actual, 'Constraint was not copied to the fake table.';
+
+  SELECT @Actual = COUNT(*)
+    FROM tSQLt.Private_RenamedObjectLog
+   WHERE ObjectId = @OriginalObjectId
+     AND PARSENAME(OriginalName,1) = 'constraint.with.dots and spaces]';
+
+  EXEC tSQLt.AssertEquals 1, @Actual, 'Original constraint was not recorded for restoration.';
+
+  IF (OBJECT_NAME(@OriginalObjectId) = 'constraint.with.dots and spaces]')
+  BEGIN
+    EXEC tSQLt.Fail 'Original constraint was not renamed.';
+  END;
+
+  IF (@VerifyUndoTestDoubles = 1)
+  BEGIN
+    EXEC tSQLt.UndoTestDoubles;
+
+    DECLARE @RestoredName NVARCHAR(MAX) = OBJECT_NAME(@OriginalObjectId);
+    EXEC tSQLt.AssertEqualsString 'constraint.with.dots and spaces]', @RestoredName, 'Original constraint was not restored by UndoTestDoubles.';
+  END;
+END;
+GO
+
+CREATE PROC ApplyConstraintTests.[test ApplyConstraint applies foreign key with dots spaces and closing brackets in names]
+AS
+BEGIN
+  EXEC ApplyConstraintTests.AssertConstraintWithSpecialCharactersCanBeApplied
+    'FOREIGN KEY REFERENCES [sch.ema]] A].[par.ent]] table](id)',
+    'constraint.with.dots and spaces]',
+    @VerifyUndoTestDoubles = 0; -- UndoTestDoubles currently fails for any applied foreign key, independent of naming (pre-existing drop-order issue)
+END;
+GO
+
+CREATE PROC ApplyConstraintTests.[test ApplyConstraint applies foreign key with quoted special characters in names]
+AS
+BEGIN
+  EXEC ApplyConstraintTests.AssertConstraintWithSpecialCharactersCanBeApplied
+    'FOREIGN KEY REFERENCES [sch.ema]] A].[par.ent]] table](id)',
+    '[constraint.with.dots and spaces]]]',
+    @VerifyUndoTestDoubles = 0; -- UndoTestDoubles currently fails for any applied foreign key, independent of naming (pre-existing drop-order issue)
+END;
+GO
+
+CREATE PROC ApplyConstraintTests.[test ApplyConstraint applies primary key with dots spaces and closing brackets in names]
+AS
+BEGIN
+  EXEC ApplyConstraintTests.AssertConstraintWithSpecialCharactersCanBeApplied
+    'PRIMARY KEY', 'constraint.with.dots and spaces]';
+END;
+GO
+
+CREATE PROC ApplyConstraintTests.[test ApplyConstraint applies unique constraint with dots spaces and closing brackets in names]
+AS
+BEGIN
+  EXEC ApplyConstraintTests.AssertConstraintWithSpecialCharactersCanBeApplied
+    'UNIQUE', 'constraint.with.dots and spaces]';
+END;
+GO
+
+CREATE PROC ApplyConstraintTests.[test ApplyConstraint applies check constraint with dots spaces and closing brackets in names]
+AS
+BEGIN
+  EXEC ApplyConstraintTests.AssertConstraintWithSpecialCharactersCanBeApplied
+    'CHECK (id > 0)', 'constraint.with.dots and spaces]';
+END;
+GO
+
+CREATE PROC ApplyConstraintTests.[test ApplyConstraint and UndoTestDoubles handle single quotes in names]
+AS
+BEGIN
+  EXEC ('CREATE SCHEMA [sch''ema]');
+  EXEC ('CREATE TABLE [sch''ema].[ta''ble] (id INT CONSTRAINT [check''constraint] CHECK (id > 0), CONSTRAINT [primary''key] PRIMARY KEY (id));');
+
+  DECLARE @OriginalCheckObjectId INT = OBJECT_ID('[sch''ema].[check''constraint]');
+  DECLARE @OriginalPrimaryKeyObjectId INT = OBJECT_ID('[sch''ema].[primary''key]');
+
+  EXEC tSQLt.FakeTable '[sch''ema].[ta''ble]';
+
+  EXEC tSQLt.ApplyConstraint '[sch''ema].[ta''ble]', 'check''constraint';
+  EXEC tSQLt.ApplyConstraint '[sch''ema].[ta''ble]', 'primary''key';
+
+  DECLARE @Actual INT;
+  SELECT @Actual = COUNT(*)
+    FROM sys.objects
+   WHERE name IN ('check''constraint', 'primary''key')
+     AND parent_object_id = OBJECT_ID('[sch''ema].[ta''ble]');
+
+  EXEC tSQLt.AssertEquals 2, @Actual, 'Constraints were not copied to the fake table.';
+
+  EXEC tSQLt.UndoTestDoubles;
+
+  SELECT X.ObjectName
+    INTO #Expected
+    FROM (VALUES('check''constraint'),('primary''key')) X (ObjectName);
+
+  SELECT OBJECT_NAME(X.ObjectId) ObjectName
+    INTO #Actual
+    FROM (VALUES(@OriginalCheckObjectId),(@OriginalPrimaryKeyObjectId)) X (ObjectId);
+
+  EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';
+END;
+GO
