@@ -1329,6 +1329,21 @@ BEGIN
 END;
 GO
 
+CREATE PROCEDURE tSQLt_test.[test Private_Print preserves all lines after percent signs]
+AS
+BEGIN
+  EXEC tSQLt.CaptureOutput @command =
+    'DECLARE @Message NVARCHAR(MAX); SET @Message = ''%%%%%s%d''+CHAR(13)+CHAR(10)+''%''+CHAR(13)+CHAR(10)+''end''; EXEC tSQLt.Private_Print @Message;';
+
+  DECLARE @Actual NVARCHAR(MAX);
+  SELECT @Actual = OutputText FROM tSQLt.CaptureOutputLog;
+
+  DECLARE @Expected NVARCHAR(MAX);
+  SET @Expected = '%%%%%s%d'+CHAR(13)+CHAR(10)+'%'+CHAR(13)+CHAR(10)+'end'+CHAR(13)+CHAR(10);
+  EXEC tSQLt.AssertEqualsString @Expected, @Actual;
+END;
+GO
+
 CREATE PROCEDURE tSQLt_test.[test Fail places parameters in correct order]
 AS
 BEGIN
