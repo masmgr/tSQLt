@@ -83,8 +83,8 @@ RETURN SELECT 'CONSTRAINT ' + name + ' FOREIGN KEY (' +
                   AND e.value = OBJECT_NAME(k.referenced_object_id)
                  JOIN sys.tables refTab
                    ON COALESCE(e.major_id,k.referenced_object_id) = refTab.object_id
-                WHERE k.parent_object_id = OBJECT_ID(@SchemaName + '.' + @ParentTableName)
-                  AND k.object_id = OBJECT_ID(@SchemaName + '.' + @ForeignKeyName)
+                WHERE k.parent_object_id = OBJECT_ID(QUOTENAME(@SchemaName) + '.' + QUOTENAME(@ParentTableName))
+                  AND k.object_id = OBJECT_ID(QUOTENAME(@SchemaName) + '.' + QUOTENAME(@ForeignKeyName))
                )x;
 GO
 ---Build-

@@ -18,6 +18,15 @@ BEGIN
     DECLARE @ProcParmTypeList NVARCHAR(MAX) = '';
     DECLARE @TableColTypeList NVARCHAR(MAX) = '';
 
+    DECLARE @ReturnValueVariableName sysname = '@SpyProcedureReturnValue';
+    DECLARE @ReturnValueVariableSuffix INT = 0;
+    WHILE EXISTS(SELECT 1 FROM sys.parameters WHERE object_id = @ProcedureObjectId AND name = @ReturnValueVariableName)
+       OR CHARINDEX(@ReturnValueVariableName, ISNULL(@CommandToExecute, '')) > 0
+    BEGIN
+      SET @ReturnValueVariableSuffix = @ReturnValueVariableSuffix + 1;
+      SET @ReturnValueVariableName = '@SpyProcedureReturnValue' + CAST(@ReturnValueVariableSuffix AS NVARCHAR(10));
+    END;
+
     -- Input cursor parameters must be passed without OUTPUT, whereas a newly
     -- returned cursor needs OUTPUT. Use separate, initially unassigned variables
     -- for the latter so mixed input/output cursor calls remain valid.
@@ -32,7 +41,7 @@ BEGIN
     DECLARE @CursorDeclarations NVARCHAR(MAX) = '';
     DECLARE @CursorParameterList NVARCHAR(MAX) = '';
     DECLARE @CursorArgumentList NVARCHAR(MAX) = '';
-    DECLARE @CursorCallExpression NVARCHAR(MAX) = 'N''EXEC @SpyProcedureOriginalObjectName ''';
+    DECLARE @CursorCallExpression NVARCHAR(MAX) = 'N''EXEC ' + @ReturnValueVariableName + ' = @SpyProcedureOriginalObjectName ''';
     DECLARE @CursorAssignments NVARCHAR(MAX) = '';
     DECLARE @OutputCursorVariable NVARCHAR(MAX);
     DECLARE @InputCursorVariable NVARCHAR(MAX);
@@ -42,7 +51,7 @@ BEGIN
     DECLARE @SeparatorWithoutCursor CHAR(1) = '';
     DECLARE @SeparatorWithCursor CHAR(1) = '';
     DECLARE @ParamName sysname;
-    DECLARE @TypeName sysname;
+    DECLARE @TypeName NVARCHAR(MAX);
     DECLARE @IsOutput BIT;
     DECLARE @IsCursorRef BIT;
     DECLARE @IsTableType BIT;
@@ -126,17 +135,22 @@ BEGIN
                               ELSE ' (' + @TableColList + ') SELECT ' + @ProcParmListForInsert
                          END + ';';
                          
-    SELECT @CreateLogTableStatement = 'CREATE TABLE ' + @LogTableName + ' (_id_ int IDENTITY(1,1) PRIMARY KEY CLUSTERED ' + @TableColTypeList + ');';
+    DECLARE @LogIdentityColumnName NVARCHAR(MAX) = '_id_';
+    WHILE EXISTS(SELECT 1 FROM sys.parameters WHERE object_id = @ProcedureObjectId AND is_cursor_ref = 0 AND name = '@' + @LogIdentityColumnName)
+    BEGIN
+      SET @LogIdentityColumnName = @LogIdentityColumnName + '_';
+    END;
+    SELECT @CreateLogTableStatement = 'CREATE TABLE ' + @LogTableName + ' (' + QUOTENAME(@LogIdentityColumnName) + ' int IDENTITY(1,1) PRIMARY KEY CLUSTERED ' + @TableColTypeList + ');';
 
-    DECLARE @OriginalProcedureCall NVARCHAR(MAX) = 'EXEC @SpyProcedureOriginalObjectName ' + @ProcParmListForCall + ';';
+    DECLARE @OriginalProcedureCall NVARCHAR(MAX) = 'EXEC ' + @ReturnValueVariableName + ' = @SpyProcedureOriginalObjectName ' + @ProcParmListForCall + ';';
     IF @CursorDeclarations <> ''
     BEGIN
       SET @OriginalProcedureCall = @CursorDeclarations +
         'DECLARE ' + @CursorVariablePrefix + 'Command NVARCHAR(MAX);' +
         'SET ' + @CursorVariablePrefix + 'Command = ' + @CursorCallExpression + ';' +
         'EXEC sys.sp_executesql ' + @CursorVariablePrefix + 'Command,N''' +
-          REPLACE('@SpyProcedureOriginalObjectName NVARCHAR(MAX)' + @CursorParameterList,'''','''''') +
-          ''',@SpyProcedureOriginalObjectName' + @CursorArgumentList + ';' + @CursorAssignments;
+          REPLACE('@SpyProcedureOriginalObjectName NVARCHAR(MAX),' + @ReturnValueVariableName + ' INT OUTPUT' + @CursorParameterList,'''','''''') +
+          ''',@SpyProcedureOriginalObjectName,' + @ReturnValueVariableName + ' OUTPUT' + @CursorArgumentList + ';' + @CursorAssignments;
     END;
 
     SELECT @CreateProcedureStatement = 
@@ -147,10 +161,11 @@ BEGIN
                 ISNULL(@CommandToExecute + ';', '') +
                 CHAR(13)+CHAR(10)+/*CR,LF*/
                 CASE WHEN @CallOriginal = 1 
-                     THEN @OriginalProcedureCall
-                     ELSE ''
+                     THEN 'DECLARE ' + @ReturnValueVariableName + ' INT;' +
+                          @OriginalProcedureCall +
+                          'RETURN ' + @ReturnValueVariableName + ';'
+                     ELSE 'RETURN;'
                 END +
-             ' RETURN;' +
              ' END;';
     --RAISERROR(@CreateProcedureStatement, 0, 1) WITH NOWAIT;
 

@@ -119,7 +119,7 @@ try{
         Set-Content -Path (Join-Path $tempPath 'CreateBuildLog.sql') -Value ($CreateBuildLog);
         
     Log-Output("Packaging tSQLt...")
-        $toBeZipped = @("ReleaseNotes.txt", "License.txt", "tSQLt.class.sql", "Example.sql", "PrepareServer.sql");
+        $toBeZipped = @("ReleaseNotes.txt", "License.txt", "tSQLt.class.sql", "Example.sql", "PrepareServer.sql", "Uninstall.sql");
         $compress = @{
             CompressionLevel = "Optimal"
             DestinationPath = (Join-Path $OutputPath "tSQLtFiles.zip")

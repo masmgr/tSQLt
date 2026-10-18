@@ -294,6 +294,7 @@ namespace tSQLtCLR
                                 break;
                             case SqlDbType.Timestamp:
                             case SqlDbType.Image:
+                            case SqlDbType.Binary:
                             case SqlDbType.VarBinary:
                                 rowData[i] = SqlBinaryToString(reader.GetSqlBinary(i));
                                 break;
@@ -320,8 +321,8 @@ namespace tSQLtCLR
             return columnName.Replace("[","").Replace("]","");
         }
 
-        private static string SqlDateToString(SqlDateTime dtValue) {
-            return String.Format("{0:yyyy-MM-dd}", dtValue.Value);
+        private static string SqlDateToString(DateTime dtValue) {
+            return dtValue.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         private static String SqlDateTimeToString(SqlDateTime dtValue) {
