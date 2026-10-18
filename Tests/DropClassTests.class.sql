@@ -197,6 +197,72 @@ BEGIN
     END
 END;
 GO
+--[@tSQLt:MinSqlMajorVersion](11)
+CREATE PROC DropClassTests.[test removes Sequences]
+AS
+BEGIN
+    EXEC('CREATE SCHEMA MyTestClass;');
+    EXEC('CREATE SEQUENCE MyTestClass.S AS INT START WITH 1;');
+
+    EXEC tSQLt.ExpectNoException;
+
+    EXEC tSQLt.DropClass 'MyTestClass';
+
+    IF(SCHEMA_ID('MyTestClass') IS NOT NULL)
+    BEGIN
+      EXEC tSQLt.Fail 'DropClass did not drop MyTestClass';
+    END
+END;
+GO
+--[@tSQLt:MinSqlMajorVersion](11)
+CREATE PROC DropClassTests.[test removes sequences with names that require quoting]
+AS
+BEGIN
+    EXEC('CREATE SCHEMA [My.Tes''t Class];');
+    EXEC('CREATE SEQUENCE [My.Tes''t Class].[Seq.u''ence] AS INT START WITH 1;');
+
+    EXEC tSQLt.ExpectNoException;
+
+    EXEC tSQLt.DropClass '[My.Tes''t Class]';
+
+    IF(SCHEMA_ID('My.Tes''t Class') IS NOT NULL)
+    BEGIN
+      EXEC tSQLt.Fail 'DropClass did not drop [My.Tes''t Class]';
+    END
+END;
+GO
+--[@tSQLt:MinSqlMajorVersion](11)
+CREATE PROC DropClassTests.[test removes sequences after tables that reference them]
+AS
+BEGIN
+    EXEC('CREATE SCHEMA MyTestClass;');
+    EXEC('CREATE SEQUENCE MyTestClass.S AS INT START WITH 1;');
+    EXEC('CREATE TABLE MyTestClass.T(I INT DEFAULT (NEXT VALUE FOR MyTestClass.S));');
+
+    EXEC tSQLt.ExpectNoException;
+
+    EXEC tSQLt.DropClass 'MyTestClass';
+
+    IF(SCHEMA_ID('MyTestClass') IS NOT NULL)
+    BEGIN
+      EXEC tSQLt.Fail 'DropClass did not drop MyTestClass';
+    END
+END;
+GO
+--[@tSQLt:MinSqlMajorVersion](11)
+CREATE PROC DropClassTests.[test fails if a sequence is referenced by a table outside of the class]
+AS
+BEGIN
+    EXEC('CREATE SCHEMA MyTestClass;');
+    EXEC('CREATE SEQUENCE MyTestClass.S AS INT START WITH 1;');
+    EXEC('CREATE SCHEMA MyOtherSchema;');
+    EXEC('CREATE TABLE MyOtherSchema.T(I INT DEFAULT (NEXT VALUE FOR MyTestClass.S));');
+
+    EXEC tSQLt.ExpectException @ExpectedMessagePattern = '%Cannot DROP SEQUENCE%';
+
+    EXEC tSQLt.DropClass 'MyTestClass';
+END;
+GO
 CREATE PROC DropClassTests.[test removes Inline Table-Valued Functions]
 AS
 BEGIN
