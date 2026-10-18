@@ -294,6 +294,7 @@ namespace tSQLtCLR
                                 break;
                             case SqlDbType.Timestamp:
                             case SqlDbType.Image:
+                            case SqlDbType.Binary:
                             case SqlDbType.VarBinary:
                                 rowData[i] = SqlBinaryToString(reader.GetSqlBinary(i));
                                 break;
