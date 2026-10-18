@@ -287,6 +287,35 @@ BEGIN
 END;
 GO
 
+CREATE PROCEDURE AssertProcedureCalledTests.[test counts calls when the log identity column is renamed]
+AS
+BEGIN
+  EXEC(N'CREATE PROCEDURE AssertProcedureCalledTests.IdentityCollision @_id_ INT, @_id__ INT AS RETURN;');
+  EXEC tSQLt.SpyProcedure N'AssertProcedureCalledTests.IdentityCollision';
+  EXEC tSQLt.AssertProcedureNotCalled N'AssertProcedureCalledTests.IdentityCollision';
+  EXEC AssertProcedureCalledTests.IdentityCollision 100, 200;
+  EXEC AssertProcedureCalledTests.IdentityCollision 300, 400;
+  EXEC tSQLt.AssertProcedureCalled N'AssertProcedureCalledTests.IdentityCollision', 2;
+END;
+GO
+
+CREATE PROCEDURE AssertProcedureCalledTests.[test counts calls even when original behavior raises an error]
+AS
+BEGIN
+  EXEC(N'CREATE PROCEDURE AssertProcedureCalledTests.FailingTarget AS RAISERROR(''Original behavior failed'',16,10);');
+  EXEC tSQLt.SpyProcedure N'AssertProcedureCalledTests.FailingTarget', @CallOriginal=1;
+  DECLARE @Error NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC AssertProcedureCalledTests.FailingTarget;
+  END TRY
+  BEGIN CATCH
+    SET @Error=ERROR_MESSAGE();
+  END CATCH;
+  EXEC tSQLt.AssertEqualsString N'Original behavior failed', @Error;
+  EXEC tSQLt.AssertProcedureCalled N'AssertProcedureCalledTests.FailingTarget', 1;
+END;
+GO
+
 CREATE PROCEDURE AssertProcedureCalledTests.[test returns BIGINT count from private helper]
 AS
 BEGIN

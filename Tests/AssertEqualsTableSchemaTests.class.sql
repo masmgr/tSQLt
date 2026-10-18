@@ -288,7 +288,6 @@ BEGIN
   EXEC tSQLt.AssertEqualsTableSchema @Expected = 'AssertEqualsTableSchemaTests.Tbl1', @Actual = 'AssertEqualsTableSchemaTests.Tbl2';
 END;
 GO
---[@tSQLt:SkipTest]('Not currently supported. See Issue https://github.com/tSQLt-org/tSQLt/issues/119')
 CREATE PROCEDURE AssertEqualsTableSchemaTests.[test calls fail if tables are #temporary and their schema does not match]
 AS
 BEGIN
@@ -306,8 +305,153 @@ BEGIN
 END;
 GO
 
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test does not fail if temporary table schemas match]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NOT NULL, NoKey NVARCHAR(25) NULL);
+  CREATE TABLE #Actual(Id INT NOT NULL, NoKey NVARCHAR(25) NULL);
+
+  EXEC tSQLt.AssertEqualsTableSchema @Expected = '#Expected', @Actual = '#Actual';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test compares temporary and permanent tables in either order]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NOT NULL, NoKey NVARCHAR(25) COLLATE DATABASE_DEFAULT NULL);
+  CREATE TABLE AssertEqualsTableSchemaTests.Tbl1(Id INT NOT NULL, NoKey NVARCHAR(25) COLLATE DATABASE_DEFAULT NULL);
+
+  EXEC tSQLt.AssertEqualsTableSchema @Expected = '#Expected', @Actual = 'AssertEqualsTableSchemaTests.Tbl1';
+  EXEC tSQLt.AssertEqualsTableSchema @Expected = 'AssertEqualsTableSchemaTests.Tbl1', @Actual = '#Expected';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails for different temporary and permanent schemas in either order]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NULL);
+  CREATE TABLE AssertEqualsTableSchemaTests.Tbl1(Id BIT NULL);
+
+  DECLARE @Command VARCHAR(MAX);
+  SET @Command = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''AssertEqualsTableSchemaTests.Tbl1'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+  SET @Command = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''AssertEqualsTableSchemaTests.Tbl1'', @Actual = ''#Expected'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test handles quoted and qualified temporary table names]
+AS
+BEGIN
+  CREATE TABLE [#Expected table](Id INT NULL);
+  CREATE TABLE [#Actual table](Id INT NULL);
+
+  EXEC tSQLt.AssertEqualsTableSchema @Expected = '[#Expected table]', @Actual = 'tempdb..[#Actual table]';
+  ALTER TABLE [#Actual table] ADD ExtraColumn INT NULL;
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''tempdb..[#Expected table]'', @Actual = ''[#Actual table]'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test handles non-sequential temporary table column ids]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NULL, Gap INT NULL, NoKey INT NULL);
+  CREATE TABLE #Actual(Id INT NULL, NoKey INT NULL);
+  ALTER TABLE #Expected DROP COLUMN Gap;
+
+  EXEC tSQLt.AssertEqualsTableSchema @Expected = '#Expected', @Actual = '#Actual';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in missing columns]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NULL, NoKey INT NULL);
+  CREATE TABLE #Actual(Id INT NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in renamed columns]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NULL);
+  CREATE TABLE #Actual(Renamed INT NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in column order]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NULL, NoKey BIT NULL);
+  CREATE TABLE #Actual(NoKey BIT NULL, Id INT NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in nullability]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NOT NULL);
+  CREATE TABLE #Actual(Id INT NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in length]
+AS
+BEGIN
+  CREATE TABLE #Expected(NoKey NVARCHAR(25) NULL);
+  CREATE TABLE #Actual(NoKey NVARCHAR(256) NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in precision]
+AS
+BEGIN
+  CREATE TABLE #Expected(NoKey DECIMAL(13,2) NULL);
+  CREATE TABLE #Actual(NoKey DECIMAL(17,2) NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in scale]
+AS
+BEGIN
+  CREATE TABLE #Expected(NoKey DECIMAL(13,2) NULL);
+  CREATE TABLE #Actual(NoKey DECIMAL(13,7) NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test fails if temporary tables differ in collation]
+AS
+BEGIN
+  CREATE TABLE #Expected(NoKey VARCHAR(25) COLLATE SQL_Latin1_General_CP1_CS_AS NULL);
+  CREATE TABLE #Actual(NoKey VARCHAR(25) COLLATE SQL_Latin1_General_CP1_CI_AI NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'';';
+  EXEC tSQLt_testutil.assertFailCalled @Command, 'AssertEqualsTableSchema did not call Fail';
+END;
+GO
+CREATE PROCEDURE AssertEqualsTableSchemaTests.[test preserves supplied failure message for temporary tables]
+AS
+BEGIN
+  CREATE TABLE #Expected(Id INT NULL);
+  CREATE TABLE #Actual(Id BIT NULL);
+
+  DECLARE @Command VARCHAR(MAX) = 'EXEC tSQLt.AssertEqualsTableSchema @Expected = ''#Expected'', @Actual = ''#Actual'', @Message = ''{supplied message}'';';
+  EXEC tSQLt_testutil.AssertFailMessageLike @Command, '{supplied message}%Unexpected/missing column(s)%';
+END;
+GO
+
 /*
-SELECT 
+SELECT
     C.column_id,
     C.name,
     CAST(C.system_type_id AS NVARCHAR(MAX))+QUOTENAME(TS.name) system_type_id,

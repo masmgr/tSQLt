@@ -39,6 +39,13 @@ try{
 
   Set-Content -Path $OutputFilePath -Value ($TemplateFileContent.Replace("/*--DROPSTATEMENT--*/",$DropClassStatement));
 
+  # Reuse the same dependency-free schema removal for standalone recovery.
+  $UninstallTemplate = Get-Content -Raw -Path ($sourcePath+"tSQLt.Uninstall.mdl.sql");
+  $UninstallContent = Get-Content -Path ($sourcePath+"tSQLt.Uninstall.ssp.sql");
+  $UninstallSnip = ($UninstallContent | Get-SnipContent -startSnipPattern "/*SnipStart: StandaloneUninstall*/" -endSnipPattern "/*SnipEnd: StandaloneUninstall*/") -join [Environment]::NewLine;
+  $UninstallScript = $UninstallTemplate.Replace("/*--DROPSTATEMENT--*/",$DropClassStatement).Replace("/*--UNINSTALL--*/",$UninstallSnip);
+  Set-Content -Path ($tempPath+"Uninstall.sql") -Value $UninstallScript;
+
   Log-Output '<!--========            End CreateDropClassStatement.ps1          =========-->'
 }
 finally{
