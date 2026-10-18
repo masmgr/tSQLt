@@ -20,7 +20,7 @@ GO
 CREATE PROCEDURE SelectedTestsTests.[test tag selection deduplicates and matches any tag]
 AS
 BEGIN
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @Tag=N'integration',@NamePattern=N'SelectedFixture.%';
   SELECT TOP(0) * INTO #Expected FROM #Actual;
   INSERT INTO #Expected VALUES(N'SelectedFixture',N'test smoke',N'[SelectedFixture].[test smoke]');
@@ -34,7 +34,7 @@ GO
 CREATE PROCEDURE SelectedTestsTests.[test name selection uses full unquoted name and SQL LIKE]
 AS
 BEGIN
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @NamePattern=N'SelectedFixture.test s[ml]o_e';
   SELECT TOP(0) * INTO #Expected FROM #Actual;
   INSERT INTO #Expected VALUES(N'SelectedFixture',N'test smoke',N'[SelectedFixture].[test smoke]');
@@ -45,7 +45,7 @@ GO
 CREATE PROCEDURE SelectedTestsTests.[test tag and name filters intersect]
 AS
 BEGIN
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @Tag=N'smoke',@NamePattern=N'SelectedFixture.test slow';
   EXEC tSQLt.AssertEmptyTable '#Actual';
 END;
@@ -54,7 +54,7 @@ GO
 CREATE PROCEDURE SelectedTestsTests.[test omitted filters list exactly registered tests]
 AS
 BEGIN
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests;
   SELECT TestClassName,Name AS TestCaseName,QUOTENAME(TestClassName)+N'.'+QUOTENAME(Name) AS FullName
     INTO #Expected FROM tSQLt.Tests;
@@ -65,7 +65,7 @@ GO
 CREATE PROCEDURE SelectedTestsTests.[test name-only selection includes untagged tests and excludes helpers]
 AS
 BEGIN
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @NamePattern=N'SelectedFixture.%';
   DECLARE @Count INT=(SELECT COUNT(*) FROM #Actual);
   EXEC tSQLt.AssertEquals 3,@Count;
@@ -79,7 +79,7 @@ BEGIN
     -'+N'-[@tSQLt:Tag] '+NCHAR(9)+N'( N''日本語''''tag'' ) '+NCHAR(9)+N'
     RETURN;';
   EXEC(@Cmd);
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @Tag=N'日本語''tag',@NamePattern=N'SelectedFixture.%';
   SELECT TOP(0) * INTO #Expected FROM #Actual;
   INSERT INTO #Expected VALUES(N'SelectedFixture',N'test 日本語 ]',N'[SelectedFixture].[test 日本語 ]]]');
@@ -90,7 +90,7 @@ GO
 CREATE PROCEDURE SelectedTestsTests.[test trailing spaces in tag values are significant]
 AS
 BEGIN
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @Tag=N'smoke ',@NamePattern=N'SelectedFixture.%';
   EXEC tSQLt.AssertEmptyTable '#Actual';
 END;
@@ -106,7 +106,7 @@ BEGIN
     -'+N'-[@tSQLt:DoesNotExist]()
     EXEC tSQLt.Fail ''body executed'';');
   SELECT * INTO #Before FROM tSQLt.TestResult;
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @Tag=N'smoke',@NamePattern=N'SelectedFixture.%';
   EXEC tSQLt.AssertEqualsTable '#Before','tSQLt.TestResult';
   DECLARE @ActualCount INT=(SELECT COUNT(*) FROM #Actual); EXEC tSQLt.AssertEquals 1,@ActualCount;
@@ -171,7 +171,7 @@ GO
 CREATE PROCEDURE SelectedTestsTests.[test listing and execution select the same tests]
 AS
 BEGIN
-  CREATE TABLE #Listed(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Listed(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Listed EXEC tSQLt.ListTests @Tag=N'smoke',@NamePattern=N'SelectedFixture.%';
   EXEC tSQLt.RunSelected @Tag=N'smoke',@NamePattern=N'SelectedFixture.%',@TestResultFormatter=N'tSQLt.NullTestResultFormatter';
   SELECT Class AS TestClassName,TestCase AS TestCaseName,Name AS FullName INTO #Actual FROM tSQLt.TestResult;
@@ -289,7 +289,7 @@ BEGIN
   EXEC(N'ALTER PROCEDURE SelectedFixture.[test smoke] AS
     -'+N'-[@tSQLt:Tag](NULL)
     RETURN;');
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @NamePattern=N'SelectedFixture.test smoke';
   DECLARE @Count INT=(SELECT COUNT(*) FROM #Actual);
   EXEC tSQLt.AssertEquals 1,@Count;
@@ -315,7 +315,7 @@ BEGIN
     -'+N'-[@tSQLt:Tag](''smoke'')
     -'+N'-[@tSQLt:TagSomethingElse](arbitrary SQL)
     RETURN;');
-  CREATE TABLE #Actual(TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #Actual(TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   INSERT INTO #Actual EXEC tSQLt.ListTests @Tag=N'smoke',@NamePattern=N'SelectedFixture.%';
   DECLARE @Count INT=(SELECT COUNT(*) FROM #Actual);
   EXEC tSQLt.AssertEquals 1,@Count;

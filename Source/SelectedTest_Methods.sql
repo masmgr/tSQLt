@@ -147,7 +147,7 @@ CREATE PROCEDURE tSQLt.ListTests
 AS
 BEGIN
   SET NOCOUNT ON;
-  CREATE TABLE #SelectedTests(ObjectId INT,SchemaId INT,TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #SelectedTests(ObjectId INT,SchemaId INT,TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   DECLARE @ReturnCode INT;
   EXEC @ReturnCode = tSQLt.Private_SelectTests @Tag,@NamePattern;
   IF @ReturnCode <> 0 RETURN -1;
@@ -187,7 +187,7 @@ CREATE PROCEDURE tSQLt.RunSelected
 AS
 BEGIN
   SET NOCOUNT ON;
-  CREATE TABLE #SelectedTests(ObjectId INT,SchemaId INT,TestClassName SYSNAME,TestCaseName SYSNAME,FullName NVARCHAR(517));
+  CREATE TABLE #SelectedTests(ObjectId INT,SchemaId INT,TestClassName SYSNAME COLLATE DATABASE_DEFAULT,TestCaseName SYSNAME COLLATE DATABASE_DEFAULT,FullName NVARCHAR(517) COLLATE DATABASE_DEFAULT);
   DECLARE @ReturnCode INT;
   EXEC @ReturnCode = tSQLt.Private_SelectTests @Tag,@NamePattern;
   IF @ReturnCode <> 0 RETURN -1;

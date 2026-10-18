@@ -47,7 +47,7 @@ CREATE PROCEDURE FakeFunctionTests.[test tSQLt.Private_GetFullTypeName is used t
 AS
 BEGIN
   EXEC('CREATE FUNCTION FakeFunctionTests.AFunction(@p1 NUMERIC(10,1),@p2 NVARCHAR(MAX)) RETURNS NVARCHAR(MAX) AS BEGIN RETURN ''''; END;');
-  EXEC('CREATE FUNCTION FakeFunctionTests.Fake(@p1 NUMERIC(10,1),@p2 VARCHAR(MAX)) RETURNS VARCHAR(MAX) AS BEGIN RETURN ''''; END;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.Fake(@p1 NUMERIC(10,1),@p2 NVARCHAR(MAX)) RETURNS NVARCHAR(MAX) AS BEGIN RETURN ''''; END;');
   
   EXEC tSQLt.RemoveObject @ObjectName = 'tSQLt.Private_GetFullTypeName';
   EXEC('CREATE FUNCTION tSQLt.Private_GetFullTypeName(@TypeId INT, @Length INT, @Precision INT, @Scale INT, @CollationName NVARCHAR(MAX))'+
@@ -375,6 +375,58 @@ BEGIN
   EXEC('CREATE FUNCTION FakeFunctionTests.AFakeFunction(@di INT) RETURNS NVARCHAR(MAX) AS BEGIN RETURN ''''; END;');
 
   EXEC FakeFunctionTests.[assert parameter missmatch causes error];
+END;
+GO
+CREATE PROCEDURE FakeFunctionTests.[test rejects different parameter types with identical storage metadata]
+AS
+BEGIN
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFunction(@id VARCHAR(4)) RETURNS INT AS BEGIN RETURN LEN(@id); END;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFakeFunction(@id NVARCHAR(2)) RETURNS INT AS BEGIN RETURN LEN(@id); END;');
+
+  EXEC FakeFunctionTests.[assert parameter missmatch causes error];
+END;
+GO
+CREATE PROCEDURE FakeFunctionTests.[test rejects different return types with identical storage metadata]
+AS
+BEGIN
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFunction() RETURNS VARCHAR(4) AS BEGIN RETURN ''ABCD''; END;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFakeFunction() RETURNS NVARCHAR(2) AS BEGIN RETURN N''AB''; END;');
+
+  EXEC FakeFunctionTests.[assert parameter missmatch causes error];
+END;
+GO
+CREATE PROCEDURE FakeFunctionTests.[test rejects different alias types with identical base types]
+AS
+BEGIN
+  EXEC('CREATE TYPE FakeFunctionTests.Alias1 FROM INT;');
+  EXEC('CREATE TYPE FakeFunctionTests.Alias2 FROM INT;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFunction(@id FakeFunctionTests.Alias1) RETURNS INT AS BEGIN RETURN @id; END;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFakeFunction(@id FakeFunctionTests.Alias2) RETURNS INT AS BEGIN RETURN @id; END;');
+
+  EXEC FakeFunctionTests.[assert parameter missmatch causes error];
+END;
+GO
+CREATE PROCEDURE FakeFunctionTests.[test rejects different table types with identical storage metadata]
+AS
+BEGIN
+  EXEC('CREATE TYPE FakeFunctionTests.TableType1 AS TABLE(Id INT);');
+  EXEC('CREATE TYPE FakeFunctionTests.TableType2 AS TABLE(Id INT);');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFunction(@id FakeFunctionTests.TableType1 READONLY) RETURNS INT AS BEGIN RETURN (SELECT COUNT(*) FROM @id); END;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFakeFunction(@id FakeFunctionTests.TableType2 READONLY) RETURNS INT AS BEGIN RETURN (SELECT COUNT(*) FROM @id); END;');
+
+  EXEC FakeFunctionTests.[assert parameter missmatch causes error];
+END;
+GO
+CREATE PROCEDURE FakeFunctionTests.[test accepts matching alias parameter and return types]
+AS
+BEGIN
+  EXEC('CREATE TYPE FakeFunctionTests.SharedAlias FROM INT;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFunction(@id FakeFunctionTests.SharedAlias) RETURNS FakeFunctionTests.SharedAlias AS BEGIN RETURN @id; END;');
+  EXEC('CREATE FUNCTION FakeFunctionTests.AFakeFunction(@id FakeFunctionTests.SharedAlias) RETURNS FakeFunctionTests.SharedAlias AS BEGIN RETURN @id + 1; END;');
+
+  EXEC tSQLt.FakeFunction 'FakeFunctionTests.AFunction', 'FakeFunctionTests.AFakeFunction';
+  DECLARE @Actual INT = FakeFunctionTests.AFunction(41);
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @Actual;
 END;
 GO
 CREATE PROCEDURE FakeFunctionTests.[test errors when parameters of the functions don't match in max_length]
