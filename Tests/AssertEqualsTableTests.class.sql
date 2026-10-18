@@ -2,6 +2,45 @@ GO
 EXEC tSQLt.NewTestClass 'AssertEqualsTableTests';
 GO
 
+CREATE PROCEDURE AssertEqualsTableTests.[test BINARY differences report hexadecimal values]
+AS
+BEGIN
+  CREATE TABLE #Expected(BinaryColumn BINARY(16));
+  CREATE TABLE #Actual(BinaryColumn BINARY(16));
+  INSERT INTO #Expected VALUES (0x33333333333333333333333333333333);
+  INSERT INTO #Actual VALUES (0xCCCC3333333333333333333333333333);
+
+  DECLARE @FailMessage NVARCHAR(MAX);
+  EXEC tSQLt_testutil.CaptureFailMessage
+    @Command = N'EXEC tSQLt.AssertEqualsTable N''#Expected'', N''#Actual'';',
+    @FailMessage = @FailMessage OUTPUT;
+
+  EXEC tSQLt.AssertLike N'%Unexpected/missing resultset rows!%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%0x33333333333333333333333333333333%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%0xCCCC3333333333333333333333333333%', @FailMessage;
+END;
+GO
+
+CREATE PROCEDURE AssertEqualsTableTests.[test DATE values before 1753 report assertion differences without CLR overflow]
+AS
+BEGIN
+  CREATE TABLE #Expected(DateColumn DATE);
+  CREATE TABLE #Actual(DateColumn DATE);
+  INSERT INTO #Expected VALUES ('0001-01-01'), ('1752-12-31');
+  INSERT INTO #Actual VALUES ('2000-01-01');
+
+  DECLARE @FailMessage NVARCHAR(MAX);
+  EXEC tSQLt_testutil.CaptureFailMessage
+    @Command = N'EXEC tSQLt.AssertEqualsTable N''#Expected'', N''#Actual'';',
+    @FailMessage = @FailMessage OUTPUT;
+
+  EXEC tSQLt.AssertLike N'%Unexpected/missing resultset rows!%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%0001-01-01%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%1752-12-31%', @FailMessage;
+  EXEC tSQLt.AssertLike N'%2000-01-01%', @FailMessage;
+END;
+GO
+
 CREATE PROCEDURE AssertEqualsTableTests.[test left table doesn't exist results in failure]
 AS
 BEGIN
@@ -114,6 +153,50 @@ BEGIN
      @ExpectedMessage,
      'Fail was not called with expected message:';
    
+END;
+GO
+
+CREATE PROCEDURE AssertEqualsTableTests.[test equal varchar values containing percent signs succeed]
+AS
+BEGIN
+  CREATE TABLE #expected (value VARCHAR(10));
+  CREATE TABLE #actual (value VARCHAR(10));
+  INSERT INTO #expected
+    SELECT '%' UNION ALL SELECT '%%' UNION ALL SELECT '%s' UNION ALL SELECT '%d' UNION ALL SELECT '100%';
+  INSERT INTO #actual SELECT value FROM #expected;
+
+  EXEC tSQLt.AssertEqualsTable '#expected', '#actual';
+END;
+GO
+
+CREATE PROCEDURE AssertEqualsTableTests.[test unequal varchar values containing percent signs preserve the failure message]
+AS
+BEGIN
+  CREATE TABLE #expected (value VARCHAR(10));
+  CREATE TABLE #actual (value VARCHAR(10));
+  INSERT INTO #expected VALUES ('%');
+  INSERT INTO #actual VALUES ('%s');
+
+  CREATE TABLE #difference ([_m_] CHAR(1), value VARCHAR(10));
+  INSERT INTO #difference
+    SELECT '<', '%' UNION ALL SELECT '>', '%s';
+  DECLARE @ExpectedMessage NVARCHAR(MAX);
+  EXEC tSQLt.TableToText @TableName = '#difference', @OrderBy = '[_m_]', @txt = @ExpectedMessage OUTPUT;
+  SET @ExpectedMessage = '100% different'+CHAR(13)+CHAR(10)+@ExpectedMessage;
+
+  DECLARE @ErrorMessage NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC tSQLt.AssertEqualsTable '#expected', '#actual', @FailMsg = '100% different';
+  END TRY
+  BEGIN CATCH
+    SET @ErrorMessage = ERROR_MESSAGE();
+  END CATCH;
+
+  EXEC tSQLt.AssertEqualsString 'tSQLt.Failure', @ErrorMessage;
+
+  DECLARE @ActualMessage NVARCHAR(MAX);
+  SELECT @ActualMessage = Msg FROM #TestMessage;
+  EXEC tSQLt.AssertEqualsString @ExpectedMessage, @ActualMessage;
 END;
 GO
 

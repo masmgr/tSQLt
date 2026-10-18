@@ -1,9 +1,15 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'TrustedConnection')]
 param(
     [string]$ServerName = '.\SQLEXPRESS',
+    [Parameter(Mandatory = $true, ParameterSetName = 'SqlAuthentication')]
+    [ValidateNotNullOrEmpty()][string]$UserName,
+    [Parameter(Mandatory = $true, ParameterSetName = 'SqlAuthentication')]
+    [securestring]$Password,
+    [Parameter(ParameterSetName = 'TrustedConnection')][switch]$TrustedConnection,
     [string]$UninstallScript = (Join-Path $PSScriptRoot '../temp/tSQLtBuild/Uninstall.sql'),
     [string]$InstallScript,
-    [string]$AssemblyPath
+    [string]$AssemblyPath,
+    [string]$ResultFile
 )
 
 # Integration tests use a new disposable database, never an existing database.
@@ -11,7 +17,7 @@ param(
 # Optional InstallScript and AssemblyPath exercise a full install and a leftover
 # CLR assembly respectively. AssemblyPath must be a SQL Server compatible DLL.
 $ErrorActionPreference = 'Stop';
-Add-Type -AssemblyName System.Data;
+Import-Module SqlServer -ErrorAction Stop;
 $UninstallSql = Get-Content -Raw -LiteralPath $UninstallScript;
 $InstallSql = if ($InstallScript) { Get-Content -Raw -LiteralPath $InstallScript };
 $AssemblySql = if ($AssemblyPath) {
@@ -19,14 +25,59 @@ $AssemblySql = if ($AssemblyPath) {
     'CREATE ASSEMBLY tSQLtCLR FROM 0x' + ([BitConverter]::ToString($bytes).Replace('-', '')) + ' WITH PERMISSION_SET = SAFE;';
 };
 
-$builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder;
+$builder = New-Object Microsoft.Data.SqlClient.SqlConnectionStringBuilder;
 $builder['Data Source'] = $ServerName;
-$builder['Integrated Security'] = $true;
+$builder['Integrated Security'] = ($PSCmdlet.ParameterSetName -eq 'TrustedConnection');
+if ($PSCmdlet.ParameterSetName -eq 'SqlAuthentication') {
+    $builder['User ID'] = $UserName;
+    $builder['Password'] = [System.Net.NetworkCredential]::new('', $Password).Password;
+}
 $builder['TrustServerCertificate'] = $true;
 $builder['Initial Catalog'] = 'master';
-$connection = New-Object System.Data.SqlClient.SqlConnection($builder.ConnectionString);
+$connection = New-Object Microsoft.Data.SqlClient.SqlConnection($builder.ConnectionString);
 $databaseName = 'tSQLt_UninstallTest_' + [Guid]::NewGuid().ToString('N');
 $databaseCreated = $false;
+$testResults = [System.Collections.Generic.List[object]]::new();
+
+function Invoke-TestFixture([string]$Name, [scriptblock]$Test) {
+    try {
+        Invoke-TestSql 'BEGIN TRAN;';
+        try { & $Test; }
+        finally { Invoke-TestSql 'IF @@TRANCOUNT > 0 ROLLBACK;'; }
+        $testResults.Add(@{ Name = $Name; Failure = $null });
+        Write-Host "PASS: $Name";
+    }
+    catch {
+        $testResults.Add(@{ Name = $Name; Failure = $_.Exception.ToString() });
+        throw;
+    }
+}
+
+function Write-TestResults {
+    if (-not $ResultFile) { return; }
+    $document = [System.Xml.XmlDocument]::new();
+    $suite = $document.CreateElement('testsuite');
+    $suite.SetAttribute('name', 'StandaloneUninstall');
+    $suite.SetAttribute('tests', [string]$testResults.Count);
+    $suite.SetAttribute('failures', [string]@($testResults | Where-Object { $_.Failure }).Count);
+    $suite.SetAttribute('errors', '0');
+    $suite.SetAttribute('skipped', '0');
+    foreach ($result in $testResults) {
+        $case = $document.CreateElement('testcase');
+        $case.SetAttribute('classname', 'StandaloneUninstall');
+        $case.SetAttribute('name', $result.Name);
+        if ($result.Failure) {
+            $failure = $document.CreateElement('failure');
+            $failure.InnerText = $result.Failure;
+            $null = $case.AppendChild($failure);
+        }
+        $null = $suite.AppendChild($case);
+    }
+    $null = $document.AppendChild($suite);
+    $resultPath = [IO.Path]::GetFullPath($ResultFile);
+    $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($resultPath));
+    $document.Save($resultPath);
+}
 
 function Invoke-TestSql([string]$Sql) {
     foreach ($batch in [regex]::Split($Sql, '(?im)^\s*GO\s*\r?$')) {
@@ -90,8 +141,7 @@ CREATE TABLE UserTests.Preserved(Id INT);
 INSERT INTO UserTests.Preserved VALUES(42);
 '@;
     foreach ($fixture in $fixtures) {
-        Invoke-TestSql 'BEGIN TRAN;';
-        try {
+        Invoke-TestFixture -Name $fixture.Name -Test {
             Invoke-TestSql $fixture.Sql;
             # The second execution verifies rerunning after successful removal.
             Invoke-TestSql $UninstallSql;
@@ -109,13 +159,11 @@ IF (SELECT COUNT(*) FROM UserTests.Preserved WHERE Id = 42) <> 1
                 Invoke-TestSql 'EXEC tSQLt.AssertEquals @Expected = 1, @Actual = 1;';
                 Invoke-TestSql $UninstallSql;
             }
-            Write-Host "PASS: $($fixture.Name)";
         }
-        finally { Invoke-TestSql 'IF @@TRANCOUNT > 0 ROLLBACK;'; }
     }
 
-    Invoke-TestSql 'BEGIN TRAN; CREATE USER [tSQLt.TestClass] WITHOUT LOGIN;';
-    try {
+    Invoke-TestFixture -Name 'external dependency errors preserve the external schema' -Test {
+        Invoke-TestSql 'CREATE USER [tSQLt.TestClass] WITHOUT LOGIN;';
         Invoke-TestSql 'CREATE SCHEMA DependentSchema AUTHORIZATION [tSQLt.TestClass];';
         $failed = $false;
         try { Invoke-TestSql $UninstallSql; }
@@ -128,15 +176,18 @@ IF (SELECT COUNT(*) FROM UserTests.Preserved WHERE Id = 42) <> 1
 IF SCHEMA_ID('DependentSchema') IS NULL
   RAISERROR('An external schema was removed.',16,1);
 '@;
-        Write-Host 'PASS: external dependency errors are reported without deleting its schema';
     }
-    finally { Invoke-TestSql 'IF @@TRANCOUNT > 0 ROLLBACK;'; }
 }
 finally {
-    if ($connection.State -eq 'Open' -and $databaseCreated) {
-        Invoke-TestSql 'IF @@TRANCOUNT > 0 ROLLBACK;';
-        $connection.ChangeDatabase('master');
-        Invoke-TestSql "ALTER DATABASE [$databaseName] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$databaseName];";
+    try {
+        if ($connection.State -eq 'Open' -and $databaseCreated) {
+            Invoke-TestSql 'IF @@TRANCOUNT > 0 ROLLBACK;';
+            $connection.ChangeDatabase('master');
+            Invoke-TestSql "ALTER DATABASE [$databaseName] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [$databaseName];";
+        }
     }
-    $connection.Dispose();
+    finally {
+        $connection.Dispose();
+        Write-TestResults;
+    }
 }

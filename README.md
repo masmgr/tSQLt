@@ -13,6 +13,8 @@ tSQLt allows you to implement unit tests in T-SQL. This is important as you do n
 
 tSQLt is licensed under Apache 2.0 (https://github.com/tSQLt-org/tSQLt/blob/master/Build/License.txt)
 
+## Removing tSQLt
+
 To remove tSQLt, run `Uninstall.sql` from the download in the database containing
 tSQLt. This standalone script can also clean up an incomplete installation when
 `tSQLt.Uninstall` or its dependencies are missing. It can be run repeatedly, even
@@ -20,15 +22,50 @@ if tSQLt is absent. Use an account with permission to drop the tSQLt objects,
 assembly and database user. User test schemas and server settings are preserved;
 external dependencies or database corruption may require manual intervention.
 
-To test the standalone uninstaller against a local SQL Server with Windows
-authentication, first run the build, then run:
+The standalone uninstaller tests require the `SqlServer` PowerShell module.
+After building, extract `Build/output/tSQLt/public/tSQLt.zip` and
+`Build/output/tSQLtCLR/tSQLtCLR.zip`. For Windows authentication, run:
 
 ```powershell
-./Build/Tests/Test-Uninstall.ps1 -ServerName '.\SQLEXPRESS'
+./Build/Tests/Test-Uninstall.ps1 -ServerName '.\SQLEXPRESS' `
+  -UninstallScript '<package>/Uninstall.sql' `
+  -InstallScript '<package>/tSQLt.class.sql' -AssemblyPath '<clr>/tSQLtCLR.dll'
 ```
 
-The test creates and drops its own database. Supply `-InstallScript` with the
-built `tSQLt.class.sql` and `-AssemblyPath` with a built `tSQLtCLR.dll` to also
-test a complete installation, reinstallation, and a leftover CLR assembly.
+For SQL authentication, also pass `-UserName` and a SecureString `-Password`.
+Pass `-ResultFile` to save JUnit XML. The test creates and drops its own disposable
+database, checks incomplete and complete installations, reruns removal, verifies
+reinstallation, and preserves unrelated user objects. CI supplies both optional
+fixture paths above and runs all eight scenarios on SQL Server 2017, 2019, and 2022.
+
+## Development in the masmgr fork
+
+`main` tracks the upstream tSQLt repository. `develop` integrates changes maintained
+in this fork. Open pull requests for bug fixes and enhancements against `develop`;
+keep each change in its own branch and validate it with CI before merging.
+
+## Continuous integration
+
+The GitHub Actions `CI` workflow runs on pushes to `develop` and `main`, pull
+requests targeting either branch, and manual dispatch. It builds tSQLt with
+`Build/LocalBuild.ps1` and runs the existing validation suite with
+`Build/LocalValidate.ps1` against SQL Server 2017, 2019, and 2022 on Linux using
+Ubuntu runners. No external service credentials or repository secrets are needed.
+It also tests the standalone uninstaller from the built package using SQL
+authentication. Dedicated results are included in the run summary and artifacts.
+
+Open the PR checks or the repository's **Actions > CI** page to view each SQL
+Server job. The run summary lists test counts, failures, errors, and skipped tests.
+Validation fails on test failures or errors, missing expected result files, or an
+empty test run.
+
+Each job uploads `test-results-sql<version>` containing the result XML files,
+validation output, and build/validation logs, including available files when a
+step fails. These artifacts are retained for 30 days. Successful jobs also upload
+`tSQLt-sql<version>` build artifacts, retained for 14 days.
+
+CI uses a temporary self-signed key. Its build artifacts are for validation only
+and must not be distributed as releases. This workflow covers Linux SQL Server;
+it does not establish compatibility with Windows or other SQL Server versions.
 
 
