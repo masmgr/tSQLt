@@ -99,6 +99,38 @@ BEGIN
 END;
 GO
 
+CREATE PROC FailTests.[test Fail recreates running case savepoint before later planned results]
+AS
+BEGIN
+  DECLARE @TranName NVARCHAR(MAX);
+  SELECT @TranName = TranName FROM tSQLt.TestResult
+   WHERE Id = (SELECT MAX(Id) FROM tSQLt.TestResult);
+
+  -- Model the first case followed by already materialized, unexecuted cases.
+  INSERT tSQLt.TestResult(Class,TestCase,TranName,CaseId,CaseState)
+    VALUES('CaseFixture','test cases',@TranName,'A','Running'),
+          ('CaseFixture','test cases',NULL,'B','NotRun');
+
+  EXEC FailTests.InvalidateTransaction;
+
+  DECLARE @ErrorMessage NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC tSQLt.Fail 'doomed case failed';
+  END TRY
+  BEGIN CATCH
+    SET @ErrorMessage = ERROR_MESSAGE();
+  END CATCH;
+
+  EXEC tSQLt.AssertEqualsString 'tSQLt.Failure', @ErrorMessage;
+  BEGIN TRY
+    ROLLBACK TRAN @TranName;
+  END TRY
+  BEGIN CATCH
+    EXEC tSQLt.Fail 'Expected the running case savepoint to be recreated';
+  END CATCH;
+END;
+GO
+
 CREATE PROC FailTests.[test Fail gives info about cleanup work if transaction state is invalidated]
 AS
 BEGIN

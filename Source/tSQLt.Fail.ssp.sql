@@ -22,9 +22,11 @@ BEGIN
      SET @WarningMessage = CHAR(13)+CHAR(10)+'Warning: Uncommitable transaction detected!';
 
      DECLARE @TranName NVARCHAR(MAX);
-     SELECT @TranName = TranName
+     -- Case runs insert all planned results before executing the first case.
+     -- Prefer the running case; ordinary tests retain the latest-result lookup.
+     SELECT TOP (1) @TranName = TranName
        FROM tSQLt.TestResult
-      WHERE Id = (SELECT MAX(Id) FROM tSQLt.TestResult);
+      ORDER BY CASE WHEN CaseState = 'Running' THEN 0 ELSE 1 END, Id DESC;
 
      DECLARE @TranCount INT;
      SET @TranCount = @@TRANCOUNT;
