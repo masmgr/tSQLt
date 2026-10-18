@@ -145,11 +145,26 @@ jobs:
             Stop-Transcript
           }
 
+      - name: Test issue 222 on fresh connections
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/tSQLt-logs/issue222.log" -Force
+          try {
+            ./Build/Tests/Test-NoTransactionIssue222.ps1 `
+              -ServerName $env:SQL_SERVER `
+              -UserName sa `
+              -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force) `
+              -InstallScript "$env:RUNNER_TEMP/tSQLt-uninstall-package/tSQLt.class.sql" `
+              -ResultFile ./Build/output/Issue222/TestResults_Issue222.xml
+          } finally {
+            Stop-Transcript
+          }
+
       - name: Summarize test results
         if: always()
         shell: pwsh
         run: |
-          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results, ./Build/output/StandaloneUninstall -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
+          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results, ./Build/output/StandaloneUninstall, ./Build/output/Issue222 -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
           $summary = @("### tSQLt test results (SQL Server ${{ matrix.sqlserver }})", "", "| Suite | Tests | Failures | Errors | Skipped |", "|---|---:|---:|---:|---:|")
           $totalTests = 0
           $totalFailures = 0
@@ -178,6 +193,7 @@ jobs:
             Build/temp/Validate/Results/
             Build/output/Validate/
             Build/output/StandaloneUninstall/
+            Build/output/Issue222/
             ${{ runner.temp }}/tSQLt-logs/
           if-no-files-found: warn
           retention-days: 30
