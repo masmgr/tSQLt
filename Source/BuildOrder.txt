@@ -107,6 +107,9 @@ tSQLt.Private_CompareStringExact.sfn.sql
 tSQLt.Private_FormatStringExact.sfn.sql
 tSQLt.AssertEqualsStringExact.ssp.sql
 tSQLt.AssertEqualsTable.ssp.sql
+tSQLt.Private_AssertProcedureCalls.ssp.sql
+tSQLt.AssertProcedureCalls.ssp.sql
+tSQLt.AssertProcedureCalledWith.ssp.sql
 tSQLt.Private_CompareTablesByKey.ssp.sql
 tSQLt.AssertEqualsTableByKey.ssp.sql
 tSQLt.StubRecord.ssp.sql

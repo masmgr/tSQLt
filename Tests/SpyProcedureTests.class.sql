@@ -1,5 +1,80 @@
 EXEC tSQLt.NewTestClass 'SpyProcedureTests';
 GO
+CREATE PROCEDURE SpyProcedureTests.[test MaxCalls preserves output cursor and original return status]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.Limited @C CURSOR VARYING OUTPUT AS
+        BEGIN SET @C = CURSOR LOCAL STATIC FOR SELECT 42; OPEN @C; RETURN -37; END;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.Limited', @CallOriginal=1, @MaxCalls=1;
+  DECLARE @C CURSOR;
+  DECLARE @Status INT, @Value INT;
+  EXEC @Status = SpyProcedureTests.Limited @C OUTPUT;
+  FETCH NEXT FROM @C INTO @Value;
+  CLOSE @C;
+  DEALLOCATE @C;
+  EXEC tSQLt.AssertEquals -37, @Status;
+  EXEC tSQLt.AssertEquals 42, @Value;
+  EXEC tSQLt.AssertProcedureCalled 'SpyProcedureTests.Limited', 1;
+  EXEC tSQLt.ExpectException @ExpectedMessage='SpyProcedure: maximum call count exceeded.';
+  EXEC SpyProcedureTests.Limited @C OUTPUT;
+END;
+GO
+CREATE PROCEDURE SpyProcedureTests.[test MaxCalls rejects excess calls before logging command and original]
+AS
+BEGIN
+  CREATE TABLE SpyProcedureTests.Effects(SourceName VARCHAR(10));
+  EXEC('CREATE PROCEDURE SpyProcedureTests.Limited AS INSERT SpyProcedureTests.Effects VALUES(''original'');');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.Limited',
+       @CommandToExecute='INSERT SpyProcedureTests.Effects VALUES(''command'')', @CallOriginal=1, @MaxCalls=1;
+  EXEC SpyProcedureTests.Limited;
+  DECLARE @Error NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC SpyProcedureTests.Limited;
+  END TRY
+  BEGIN CATCH
+    SET @Error = ERROR_MESSAGE();
+  END CATCH;
+  EXEC tSQLt.AssertEqualsString 'SpyProcedure: maximum call count exceeded.', @Error;
+  DECLARE @LogCount INT = (SELECT COUNT(*) FROM SpyProcedureTests.Limited_SpyProcedureLog);
+  DECLARE @EffectCount INT = (SELECT COUNT(*) FROM SpyProcedureTests.Effects);
+  EXEC tSQLt.AssertEquals 1, @LogCount;
+  EXEC tSQLt.AssertEquals 2, @EffectCount;
+END;
+GO
+CREATE PROCEDURE SpyProcedureTests.[test MaxCalls zero rejects the first call]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.Limited AS RETURN;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.Limited', @MaxCalls=0;
+  EXEC tSQLt.ExpectException @ExpectedMessage='SpyProcedure: maximum call count exceeded.';
+  EXEC SpyProcedureTests.Limited;
+END;
+GO
+CREATE PROCEDURE SpyProcedureTests.[test MaxCalls negative is rejected before replacing the procedure]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.Limited AS RETURN;');
+  EXEC tSQLt.ExpectException @ExpectedMessage='SpyProcedure: @MaxCalls must be NULL or nonnegative.';
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.Limited', @MaxCalls=-1;
+END;
+GO
+CREATE PROCEDURE SpyProcedureTests.[test MaxCalls stops recursive original calls]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.Limited AS EXEC SpyProcedureTests.Limited;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.Limited', @CallOriginal=1, @MaxCalls=3;
+  DECLARE @Error NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC SpyProcedureTests.Limited;
+  END TRY
+  BEGIN CATCH
+    SET @Error = ERROR_MESSAGE();
+  END CATCH;
+  EXEC tSQLt.AssertEqualsString 'SpyProcedure: maximum call count exceeded.', @Error;
+  DECLARE @LogCount INT = (SELECT COUNT(*) FROM SpyProcedureTests.Limited_SpyProcedureLog);
+  EXEC tSQLt.AssertEquals 3, @LogCount;
+END;
+GO
 CREATE PROC SpyProcedureTests.[test CallOriginal preserves a nonzero return status]
 AS
 BEGIN

@@ -49,6 +49,10 @@ before either behavior executes, so counts do not guarantee successful
 completion. Deleting log rows changes the count; applying `SpyProcedure` again
 starts a new log. These assertions do not compare arguments or execution order.
 
+For argument projections, complete call histories, ordered expectations, and an
+optional `SpyProcedure @MaxCalls` guard, see
+[Spy procedure assertions](docs/SpyProcedureAssertions.md).
+
 ## Comparing numbers with a tolerance
 
 Use `tSQLt.AssertAlmostEquals` to compare individual numeric values:

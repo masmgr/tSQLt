@@ -9,7 +9,8 @@ CREATE PROCEDURE tSQLt.Private_GenerateCreateProcedureSpyStatement
     @CommandToExecute NVARCHAR(MAX),
     @CallOriginal BIT,
     @CreateProcedureStatement NVARCHAR(MAX) OUTPUT,
-    @CreateLogTableStatement NVARCHAR(MAX) OUTPUT
+    @CreateLogTableStatement NVARCHAR(MAX) OUTPUT,
+    @MaxCalls INT = NULL
 AS
 BEGIN
     DECLARE @ProcParmListForInsert NVARCHAR(MAX) = '';
@@ -156,6 +157,10 @@ BEGIN
     SELECT @CreateProcedureStatement = 
              'CREATE PROCEDURE ' + @OriginalProcedureName + ' ' + @ProcParmTypeList + 
              ' AS BEGIN ' + 
+                CASE WHEN @MaxCalls IS NULL THEN '' ELSE
+                  'IF (SELECT COUNT_BIG(*) FROM ' + @LogTableName + ') >= ' + CONVERT(NVARCHAR(20),@MaxCalls) +
+                  ' BEGIN RAISERROR(''SpyProcedure: maximum call count exceeded.'',16,10); RETURN; END;'
+                END +
                 ISNULL(@InsertStmt,'') + 
                 ISNULL('DECLARE @SpyProcedureOriginalObjectName NVARCHAR(MAX) = '''+REPLACE(QUOTENAME(OBJECT_SCHEMA_NAME(@ProcedureObjectId))+'.'+QUOTENAME(@UnquotedNewNameOfProcedure),'''','''''')+''';','')+
                 ISNULL(@CommandToExecute + ';', '') +
