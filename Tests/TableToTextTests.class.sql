@@ -409,6 +409,37 @@ BEGIN
 END;
 GO
 
+CREATE PROCEDURE TableToTextTests.[test CLR TableToString renders BINARY(16) as hexadecimal]
+AS
+BEGIN
+    CREATE TABLE #DoesExist(T BINARY(16));
+    INSERT INTO #DoesExist (T) VALUES(0xCCCC3333333333333333333333333333);
+
+    DECLARE @result NVARCHAR(MAX);
+    SET @result = tSQLt.Private::TableToString('#DoesExist', '', '');
+
+    EXEC tSQLt.AssertEqualsString '|T                                 |
++----------------------------------+
+|0xCCCC3333333333333333333333333333|', @result;
+END;
+GO
+
+CREATE PROCEDURE TableToTextTests.[test CLR TableToString preserves BINARY padding and NULL values]
+AS
+BEGIN
+    CREATE TABLE #DoesExist(Id INT, T BINARY(4));
+    INSERT INTO #DoesExist (Id,T) VALUES(1,0x00AB), (2,NULL);
+
+    DECLARE @result NVARCHAR(MAX);
+    SET @result = tSQLt.Private::TableToString('#DoesExist', 'Id', '');
+
+    EXEC tSQLt.AssertEqualsString '|Id|T         |
++--+----------+
+|1 |0x00AB0000|
+|2 |!NULL!    |', @result;
+END;
+GO
+
 CREATE PROCEDURE TableToTextTests.[test TableToText works for one BINARY(90) column #table]
 AS
 BEGIN
@@ -780,6 +811,31 @@ BEGIN
     EXEC tSQLt.AssertEqualsString '|T         |
 +----------+
 |2001-10-13|', @result;
+END;
+GO
+
+CREATE PROCEDURE TableToTextTests.[test CLR TableToString works for DATE values across the full supported range]
+AS
+BEGIN
+    CREATE TABLE #DoesExist(T DATE);
+    INSERT INTO #DoesExist (T)VALUES('0001-01-01');
+    INSERT INTO #DoesExist (T)VALUES('1752-12-31');
+    INSERT INTO #DoesExist (T)VALUES('1753-01-01');
+    INSERT INTO #DoesExist (T)VALUES('9999-12-31');
+    INSERT INTO #DoesExist (T)VALUES(NULL);
+
+    DECLARE @result NVARCHAR(MAX);
+    SET @result = tSQLt.Private::TableToString('#DoesExist', 'T', '');
+
+    DECLARE @expected NVARCHAR(MAX);
+    SET @expected = '|T         |
++----------+
+|!NULL!    |
+|0001-01-01|
+|1752-12-31|
+|1753-01-01|
+|9999-12-31|';
+    EXEC tSQLt.AssertEqualsString @expected, @result;
 END;
 GO
 

@@ -8,8 +8,8 @@ CREATE PROCEDURE tSQLt.Private_RenameObject
 AS
 BEGIN
    DECLARE @RenameCmd NVARCHAR(MAX);
-   SET @RenameCmd = 'EXEC sp_rename ''' + 
-                    REPLACE(@SchemaName + '.' + @ObjectName, '''', '''''') + ''', ''' + 
+   SET @RenameCmd = 'EXEC sp_rename N''' +
+                    REPLACE(@SchemaName + '.' + @ObjectName, '''', '''''') + ''', N''' +
                     REPLACE(@NewName, '''', '''''') + ''',''OBJECT'';';
    
    EXEC tSQLt.SuppressOutput @RenameCmd;

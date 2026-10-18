@@ -632,8 +632,12 @@ BEGIN
   INSERT INTO #TestClassesForRunCursor
    SELECT TC.Name
      FROM tSQLt.TestClasses AS TC
-     JOIN tSQLt.Private_NewTestClassList AS PNTCL
-       ON PNTCL.ClassName = TC.Name;
+    WHERE NOT EXISTS
+          (
+            SELECT 1
+              FROM tSQLt.Private_PreviousTestClassList AS PTC
+             WHERE PTC.ClassName = TC.Name
+          );
 END;
 GO
 

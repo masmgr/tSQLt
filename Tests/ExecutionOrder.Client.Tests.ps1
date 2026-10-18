@@ -2,15 +2,28 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string]$ServerInstance,
-    [Parameter(Mandatory=$true)][string]$Database
+    [Parameter(Mandatory=$true)][string]$Database,
+    [string]$UserName,
+    [securestring]$Password,
+    [string]$InstallScript,
+    [string]$ResultFile
 )
 $ErrorActionPreference = 'Stop'
-$connectionSettings = [System.Data.SqlClient.SqlConnectionStringBuilder]::new()
+Import-Module SqlServer -ErrorAction Stop
+$connectionSettings = [Microsoft.Data.SqlClient.SqlConnectionStringBuilder]::new()
 $connectionSettings['Data Source'] = $ServerInstance
-$connectionSettings['Initial Catalog'] = $Database
-$connectionSettings['Integrated Security'] = $true
+$connectionSettings['Initial Catalog'] = if ($InstallScript) { 'master' } else { $Database }
+if ($UserName) {
+    if ($null -eq $Password) { throw 'Password is required with UserName.' }
+    $connectionSettings['User ID'] = $UserName
+    $connectionSettings['Password'] = [System.Net.NetworkCredential]::new('', $Password).Password
+} else { $connectionSettings['Integrated Security'] = $true }
 $connectionSettings['TrustServerCertificate'] = $true
-$connection = [System.Data.SqlClient.SqlConnection]::new($connectionSettings.ConnectionString)
+$connectionSettings['Pooling'] = $false
+$connection = [Microsoft.Data.SqlClient.SqlConnection]::new($connectionSettings.ConnectionString)
+$databaseCreated = $false
+$quotedDatabase = '[' + $Database.Replace(']', ']]') + ']'
+$scenarioResults = [System.Collections.Generic.List[object]]::new()
 $className = 'OrderClient_' + [Guid]::NewGuid().ToString('N')
 $transaction = $null
 
@@ -18,6 +31,7 @@ function Invoke-OrderSql([string]$Sql) {
     $command = $connection.CreateCommand()
     $command.Transaction = $transaction
     $command.CommandText = $Sql
+    $command.CommandTimeout = 120
     try { [void]$command.ExecuteNonQuery() } finally { $command.Dispose() }
 }
 
@@ -25,6 +39,7 @@ function Read-Order([string]$Sql, [int]$ExpectedCount, [string]$ExpectedError = 
     $command = $connection.CreateCommand()
     $command.Transaction = $transaction
     $command.CommandText = $Sql
+    $command.CommandTimeout = 120
     $reader = $null
     $record = $null
     $recordCount = 0
@@ -39,7 +54,7 @@ function Read-Order([string]$Sql, [int]$ExpectedCount, [string]$ExpectedError = 
                 }
             }
         } while ($reader.NextResult())
-    } catch [System.Data.SqlClient.SqlException] {
+    } catch [Microsoft.Data.SqlClient.SqlException] {
         $errorMessage = $_.Exception.Message
     } finally {
         if ($null -ne $reader) { $reader.Dispose() }
@@ -52,12 +67,21 @@ function Read-Order([string]$Sql, [int]$ExpectedCount, [string]$ExpectedError = 
     if ($recordCount -ne 1 -or $null -eq $record -or $record.SelectNodes('/TestOrder/Test').Count -ne $ExpectedCount) {
         throw "Expected an execution-order result set containing $ExpectedCount tests."
     }
+    $scenarioResults.Add([pscustomobject]@{Name="scenario $($scenarioResults.Count + 1)"; Failure=$null; Record=$record.OuterXml})
     return $record
 }
 
 try {
     $connection.Open()
     Invoke-OrderSql 'SET QUOTED_IDENTIFIER ON;'
+    if ($InstallScript) {
+        Invoke-OrderSql "CREATE DATABASE $quotedDatabase COLLATE SQL_Latin1_General_CP1_CS_AS;"
+        $databaseCreated = $true
+        $connection.ChangeDatabase($Database)
+        foreach ($batch in [regex]::Split((Get-Content -LiteralPath $InstallScript -Raw), '(?im)^\s*GO\s*\r?$')) {
+            if (-not [string]::IsNullOrWhiteSpace($batch)) { Invoke-OrderSql $batch }
+        }
+    }
     Invoke-OrderSql "CREATE SCHEMA [$className];"
     foreach ($name in @('A','B','C')) {
         Invoke-OrderSql "CREATE PROCEDURE [$className].[test $name] AS RETURN;"
@@ -67,6 +91,7 @@ try {
     # The second connection proves replay does not rely on session-local state.
     $connection.Close()
     $connection.Open()
+    $connection.ChangeDatabase($Database)
     Invoke-OrderSql 'SET QUOTED_IDENTIFIER ON;'
     $replayed = Read-Order "DECLARE @x XML; EXEC tSQLt.Run N'$className', N'tSQLt.NullTestResultFormatter', @TestOrder=N'$savedXml', @ExecutedOrder=@x OUTPUT; SELECT @x AS ExecutedOrder;" 3
     if ($record.OuterXml -ne $replayed.OuterXml) { throw 'Replay changed the recorded order.' }
@@ -94,9 +119,45 @@ try {
         throw 'The abort record did not contain exactly the started prefix.'
     }
     Write-Output 'Execution-order client tests: 6 scenarios passed.'
+} catch {
+    $scenarioResults.Add([pscustomobject]@{Name='client integration failure'; Failure=$_.Exception.Message; Record=''})
+    throw
 } finally {
     if ($null -ne $transaction) { $transaction.Rollback(); $transaction.Dispose(); $transaction = $null }
-    if ($connection.State -eq [System.Data.ConnectionState]::Open) {
-        try { Invoke-OrderSql "EXEC tSQLt.DropClass N'$className';" } finally { $connection.Dispose() }
-    } else { $connection.Dispose() }
+    try {
+        if ($databaseCreated) {
+            if ($connection.State -ne [System.Data.ConnectionState]::Open) { $connection.Open() }
+            $connection.ChangeDatabase('master')
+            Invoke-OrderSql "ALTER DATABASE $quotedDatabase SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE $quotedDatabase;"
+        } elseif ($connection.State -eq [System.Data.ConnectionState]::Open) {
+            Invoke-OrderSql "IF SCHEMA_ID(N'$className') IS NOT NULL EXEC tSQLt.DropClass N'$className';"
+        }
+    } finally {
+        $connection.Dispose()
+        if ($ResultFile) {
+            $document = [xml]'<testsuite name="ExecutionOrderClient"/>'
+            $suite = $document.DocumentElement
+            $suite.SetAttribute('tests', [string]$scenarioResults.Count)
+            $suite.SetAttribute('failures', [string]@($scenarioResults | Where-Object { $_.Failure }).Count)
+            $suite.SetAttribute('errors', '0')
+            $suite.SetAttribute('skipped', '0')
+            foreach ($scenario in $scenarioResults) {
+                $case = $document.CreateElement('testcase')
+                $case.SetAttribute('classname', 'ExecutionOrderClient')
+                $case.SetAttribute('name', $scenario.Name)
+                if ($scenario.Failure) {
+                    $failure = $document.CreateElement('failure')
+                    $failure.InnerText = $scenario.Failure
+                    $null = $case.AppendChild($failure)
+                }
+                $output = $document.CreateElement('system-out')
+                $output.InnerText = $scenario.Record
+                $null = $case.AppendChild($output)
+                $null = $suite.AppendChild($case)
+            }
+            $resultPath = [IO.Path]::GetFullPath($ResultFile)
+            $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($resultPath))
+            $document.Save($resultPath)
+        }
+    }
 }
