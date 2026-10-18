@@ -16,7 +16,7 @@ tSQLt.Private_EnableCLR.ssp.sql
 tSQLt.RemoveAssemblyKey.ssp.sql
 tSQLt.InstallAssemblyKey.ssp.sql
 tSQLt.PrepareServer.ssp.sql
-tSQLt.Private_NewTestClassList.tbl.sql
+tSQLt.Private_PreviousTestClassList.tbl.sql
 tSQLt.Private_ResetNewTestClassList.ssp.sql
 tSQLt.Private_DisallowOverwritingNonTestSchema.ssp.sql
 tSQLt.Private_QuoteClassNameForNewTestClass.sfn.sql
@@ -99,6 +99,10 @@ tSQLt.Private_CompareTables.ssp.sql
 tSQLt.AssertObjectExists.ssp.sql
 tSQLt.AssertObjectDoesNotExist.ssp.sql
 tSQLt.AssertEqualsString.ssp.sql
+tSQLt.AssertAlmostEquals.ssp.sql
+tSQLt.Private_CompareStringExact.sfn.sql
+tSQLt.Private_FormatStringExact.sfn.sql
+tSQLt.AssertEqualsStringExact.ssp.sql
 tSQLt.AssertEqualsTable.ssp.sql
 tSQLt.Private_CompareTablesByKey.ssp.sql
 tSQLt.AssertEqualsTableByKey.ssp.sql

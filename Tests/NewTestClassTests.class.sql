@@ -129,52 +129,51 @@ BEGIN
 END;
 GO
 
-CREATE PROCEDURE NewTestClassTests.[test records a new test class in tSQLt.Private_NewTestClassList]
+CREATE PROCEDURE NewTestClassTests.[test removes a recreated test class from tSQLt.Private_PreviousTestClassList]
 AS
 BEGIN
-  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_NewTestClassList';
+  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_PreviousTestClassList';
+  INSERT INTO tSQLt.Private_PreviousTestClassList VALUES('My Test Class'),('Other Class');
   EXEC tSQLt.NewTestClass 'My Test Class';
 
   SELECT ClassName
   INTO #Actual
-  FROM tSQLt.Private_NewTestClassList;
+  FROM tSQLt.Private_PreviousTestClassList;
 
   SELECT TOP(0) *
   INTO #Expected
   FROM #Actual;
-  
-  INSERT INTO #Expected
-  VALUES('My Test Class');
+
+  INSERT INTO #Expected VALUES('Other Class');
 
   EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';    
 END;
 GO
 
-CREATE PROCEDURE NewTestClassTests.[test records unquoted name in tSQLt.Private_NewTestClassList]
+CREATE PROCEDURE NewTestClassTests.[test removes unquoted name from tSQLt.Private_PreviousTestClassList]
 AS
 BEGIN
-  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_NewTestClassList';
+  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_PreviousTestClassList';
+  INSERT INTO tSQLt.Private_PreviousTestClassList VALUES('My Test Class');
   EXEC tSQLt.NewTestClass '[My Test Class]';
 
   SELECT ClassName
   INTO #Actual
-  FROM tSQLt.Private_NewTestClassList;
+  FROM tSQLt.Private_PreviousTestClassList;
 
   SELECT TOP(0) *
   INTO #Expected
   FROM #Actual;
-  
-  INSERT INTO #Expected
-  VALUES('My Test Class');
 
   EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';    
 END;
 GO
 
-CREATE PROCEDURE NewTestClassTests.[test inserts name only once in tSQLt.Private_NewTestClassList]
+CREATE PROCEDURE NewTestClassTests.[test repeatedly recreating a class keeps it out of tSQLt.Private_PreviousTestClassList]
 AS
 BEGIN
-  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_NewTestClassList';
+  EXEC tSQLt.FakeTable @TableName = 'tSQLt.Private_PreviousTestClassList';
+  INSERT INTO tSQLt.Private_PreviousTestClassList VALUES('My Test Class');
   EXEC tSQLt.NewTestClass 'My Test Class';
   EXEC tSQLt.NewTestClass '[My Test Class]';
   EXEC tSQLt.NewTestClass 'My Test Class';
@@ -182,14 +181,11 @@ BEGIN
 
   SELECT ClassName
   INTO #Actual
-  FROM tSQLt.Private_NewTestClassList;
+  FROM tSQLt.Private_PreviousTestClassList;
 
   SELECT TOP(0) *
   INTO #Expected
   FROM #Actual;
-  
-  INSERT INTO #Expected
-  VALUES('My Test Class');
 
   EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';    
 END;
