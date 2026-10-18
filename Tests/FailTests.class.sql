@@ -99,6 +99,86 @@ BEGIN
 END;
 GO
 
+CREATE PROC FailTests.[test Fail recreates running case savepoint before later planned results]
+AS
+BEGIN
+  DECLARE @TranName NVARCHAR(MAX);
+  SELECT @TranName = TranName FROM tSQLt.TestResult
+   WHERE Id = (SELECT MAX(Id) FROM tSQLt.TestResult);
+
+  -- Model the first case followed by already materialized, unexecuted cases.
+  INSERT tSQLt.TestResult(Class,TestCase,TranName,CaseId,CaseState)
+    VALUES('CaseFixture','test cases',@TranName,'A','Running'),
+          ('CaseFixture','test cases',NULL,'B','NotRun');
+
+  EXEC FailTests.InvalidateTransaction;
+
+  DECLARE @ErrorMessage NVARCHAR(MAX);
+  BEGIN TRY
+    EXEC tSQLt.Fail 'doomed case failed';
+  END TRY
+  BEGIN CATCH
+    SET @ErrorMessage = ERROR_MESSAGE();
+  END CATCH;
+
+  EXEC tSQLt.AssertEqualsString 'tSQLt.Failure', @ErrorMessage;
+  BEGIN TRY
+    ROLLBACK TRAN @TranName;
+  END TRY
+  BEGIN CATCH
+    EXEC tSQLt.Fail 'Expected the running case savepoint to be recreated';
+  END CATCH;
+END;
+GO
+
+CREATE PROC FailTests.[test Fail recovers doomed transaction with XACT_ABORT ON]
+AS
+BEGIN
+  SET XACT_ABORT ON;
+  DECLARE @TranName NVARCHAR(MAX);
+  SELECT @TranName = TranName FROM tSQLt.TestResult
+   WHERE Id = (SELECT MAX(Id) FROM tSQLt.TestResult);
+  BEGIN TRAN;
+  DECLARE @ExpectedTranCount INT = @@TRANCOUNT;
+  EXEC FailTests.InvalidateTransaction;
+
+  DECLARE @ErrorMessage NVARCHAR(MAX), @State INT, @TranCount INT, @XactAbort INT;
+  BEGIN TRY
+    EXEC tSQLt.Fail 'doomed with XACT_ABORT ON';
+  END TRY
+  BEGIN CATCH
+    SELECT @ErrorMessage = ERROR_MESSAGE(), @State = XACT_STATE(),
+           @TranCount = @@TRANCOUNT, @XactAbort = @@OPTIONS & 16384;
+  END CATCH;
+
+  EXEC tSQLt.AssertEqualsString 'tSQLt.Failure', @ErrorMessage;
+  EXEC tSQLt.AssertEquals 1, @State;
+  EXEC tSQLt.AssertEquals @ExpectedTranCount, @TranCount;
+  EXEC tSQLt.AssertEquals 16384, @XactAbort;
+  COMMIT;
+  ROLLBACK TRAN @TranName;
+END;
+GO
+
+CREATE PROC FailTests.[test Fail preserves committable transaction with XACT_ABORT ON]
+AS
+BEGIN
+  SET XACT_ABORT ON;
+  DECLARE @ErrorMessage NVARCHAR(MAX), @State INT, @XactAbort INT;
+  BEGIN TRY
+    EXEC tSQLt.Fail 'ordinary failure with XACT_ABORT ON';
+  END TRY
+  BEGIN CATCH
+    SELECT @ErrorMessage = ERROR_MESSAGE(), @State = XACT_STATE(),
+           @XactAbort = @@OPTIONS & 16384;
+  END CATCH;
+
+  EXEC tSQLt.AssertEqualsString 'tSQLt.Failure', @ErrorMessage;
+  EXEC tSQLt.AssertEquals 1, @State;
+  EXEC tSQLt.AssertEquals 16384, @XactAbort;
+END;
+GO
+
 CREATE PROC FailTests.[test Fail gives info about cleanup work if transaction state is invalidated]
 AS
 BEGIN

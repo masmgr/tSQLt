@@ -118,6 +118,19 @@ BEGIN
   EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';
 END;
 GO
+CREATE PROCEDURE CaseTests.[test XACT_ABORT ON assertion failure does not prevent next case]
+AS
+BEGIN
+  EXEC('ALTER PROCEDURE CaseFixture.[test cases] @CaseId NVARCHAR(128) AS
+        SET XACT_ABORT ON;
+        IF @CaseId = N''A'' EXEC tSQLt.Fail ''first failed'';');
+  EXEC tSQLt.Run 'CaseFixture.[test cases]', 'tSQLt.NullTestResultFormatter';
+  SELECT CaseId,Result,CaseState INTO #Actual FROM tSQLt.TestResult;
+  SELECT N'A' CaseId,N'Failure' Result,N'Completed' CaseState INTO #Expected
+  UNION ALL SELECT N'B',N'Success',N'Completed';
+  EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';
+END;
+GO
 CREATE PROCEDURE CaseTests.[test SQL error does not prevent next case]
 AS
 BEGIN
