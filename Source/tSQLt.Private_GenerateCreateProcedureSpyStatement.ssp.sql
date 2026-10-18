@@ -87,7 +87,12 @@ BEGIN
                               ELSE ' (' + @TableColList + ') SELECT ' + @ProcParmListForInsert
                          END + ';';
                          
-    SELECT @CreateLogTableStatement = 'CREATE TABLE ' + @LogTableName + ' (_id_ int IDENTITY(1,1) PRIMARY KEY CLUSTERED ' + @TableColTypeList + ');';
+    DECLARE @LogIdentityColumnName NVARCHAR(MAX) = '_id_';
+    WHILE EXISTS(SELECT 1 FROM sys.parameters WHERE object_id = @ProcedureObjectId AND is_cursor_ref = 0 AND name = '@' + @LogIdentityColumnName)
+    BEGIN
+      SET @LogIdentityColumnName = @LogIdentityColumnName + '_';
+    END;
+    SELECT @CreateLogTableStatement = 'CREATE TABLE ' + @LogTableName + ' (' + QUOTENAME(@LogIdentityColumnName) + ' int IDENTITY(1,1) PRIMARY KEY CLUSTERED ' + @TableColTypeList + ');';
 
     SELECT @CreateProcedureStatement = 
              'CREATE PROCEDURE ' + @OriginalProcedureName + ' ' + @ProcParmTypeList + 
