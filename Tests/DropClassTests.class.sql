@@ -38,6 +38,19 @@ BEGIN
     EXEC tSQLt.AssertEqualsTable '#Expected','#Actual';
 END;
 GO
+CREATE PROC DropClassTests.[test drops a class when the previous class list is hidden]
+AS
+BEGIN
+    EXEC tSQLt.RemoveObject @ObjectName = 'tSQLt.Private_PreviousTestClassList';
+    EXEC('CREATE SCHEMA MyTestClass;');
+
+    EXEC tSQLt.ExpectNoException;
+    EXEC tSQLt.DropClass 'MyTestClass';
+
+    IF SCHEMA_ID('MyTestClass') IS NOT NULL
+      EXEC tSQLt.Fail 'DropClass did not drop MyTestClass while its bookkeeping table was hidden.';
+END;
+GO
 CREATE PROC DropClassTests.[test removes UDDTs]
 AS
 BEGIN
