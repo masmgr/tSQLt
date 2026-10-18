@@ -822,3 +822,23 @@ GO
 /*-----------------------------------------------------------------------------------------------*/
 GO
 
+CREATE PROCEDURE UndoTestDoublesTests.[test works with names containing dots, closing brackets and single quotes]
+AS
+BEGIN
+  EXEC('CREATE SCHEMA [A.Random]] O''Schema];');
+  CREATE TABLE [A.Random]] O'Schema].[A.Simple]] O'Table]
+  (
+    Id INT
+  );
+
+  DECLARE @OriginalObjectId INT = OBJECT_ID('[A.Random]] O''Schema].[A.Simple]] O''Table]');
+
+  EXEC tSQLt.FakeTable @TableName = '[A.Random]] O''Schema].[A.Simple]] O''Table]';
+
+  EXEC tSQLt.UndoTestDoubles;
+
+  DECLARE @RestoredObjectId INT = OBJECT_ID('[A.Random]] O''Schema].[A.Simple]] O''Table]');
+  EXEC tSQLt.AssertEquals @Expected = @OriginalObjectId, @Actual = @RestoredObjectId;
+
+END;
+GO
