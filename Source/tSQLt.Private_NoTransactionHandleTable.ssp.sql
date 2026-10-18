@@ -11,7 +11,7 @@ BEGIN
   DECLARE @cmd NVARCHAR(MAX);
   DECLARE @RestoreEntryTrancount INT;
   DECLARE @RestoreTransactionStarted BIT = 0;
-  DECLARE @RestoreSavepoint VARCHAR(32) = REPLACE(CONVERT(VARCHAR(36),NEWID()),'-','');
+  DECLARE @RestoreSavepoint VARCHAR(32);
   BEGIN TRY
     IF (OBJECT_ID(@FullTableName) IS NULL AND @TableAction <> 'Hide')
     BEGIN
@@ -58,7 +58,10 @@ BEGIN
         IF (@RestoreEntryTrancount = 0)
           BEGIN TRAN;
         ELSE
+        BEGIN
+          SET @RestoreSavepoint = REPLACE(CONVERT(VARCHAR(36),NEWID()),'-','');
           SAVE TRAN @RestoreSavepoint;
+        END;
         SET @RestoreTransactionStarted = 1;
           DECLARE @BackupTableName TABLE(TableName NVARCHAR(MAX)); 
           DELETE FROM #TableBackupLog OUTPUT DELETED.BackupName INTO @BackupTableName WHERE OriginalName = @FullTableName;
@@ -98,11 +101,15 @@ BEGIN
     END;
   END TRY
   BEGIN CATCH
-    IF (@RestoreTransactionStarted = 1 AND XACT_STATE() <> 0)
+    -- A doomed transaction (ours, or the caller's even before SAVE TRAN) cannot be
+    -- partially rolled back and its work is lost anyway: roll it back in full so
+    -- the remaining cleanup can still run and record results.
+    IF (@RestoreEntryTrancount IS NOT NULL AND XACT_STATE() = -1)
+      ROLLBACK TRAN;
+    -- A committable transaction: undo only the restore, preserving caller work.
+    ELSE IF (@RestoreTransactionStarted = 1 AND XACT_STATE() = 1)
     BEGIN
-      -- Preserve committable caller work with a savepoint. A doomed transaction
-      -- cannot use a savepoint: roll it back in full so cleanup can record results.
-      IF (@RestoreEntryTrancount = 0 OR XACT_STATE() = -1)
+      IF (@RestoreEntryTrancount = 0)
         ROLLBACK TRAN;
       ELSE
         ROLLBACK TRAN @RestoreSavepoint;

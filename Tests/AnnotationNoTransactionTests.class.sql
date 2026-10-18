@@ -1,5 +1,7 @@
 EXEC tSQLt.NewTestClass 'AnnotationNoTransactionTests';
 GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
 CREATE PROCEDURE AnnotationNoTransactionTests.[test NoTransaction test using FakeTable records success and restores original table]
 AS
 BEGIN
@@ -25,6 +27,37 @@ BEGIN
   EXEC tSQLt.AssertEqualsString @Expected = 'Success', @Actual = @ActualResult;
   DECLARE @ActualId INT = (SELECT Id FROM MyInnerTests.TestTable);
   EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @ActualId;
+END;
+GO
+/*-----------------------------------------------------------------------------------------------*/
+GO
+CREATE PROCEDURE AnnotationNoTransactionTests.[test failed table restore during cleanup records FATAL and does not leak a transaction]
+AS
+BEGIN
+  EXEC tSQLt.NewTestClass 'MyInnerTests';
+  EXEC('
+    --[@'+'tSQLt:NoTransaction](DEFAULT)
+    CREATE PROCEDURE MyInnerTests.[test1]
+    AS
+    BEGIN
+      DECLARE @BackupName NVARCHAR(MAX) = (SELECT BackupName FROM #TableBackupLog WHERE OriginalName = ''[tSQLt].[Private_Configurations]'');
+      EXEC(''DROP TABLE '' + @BackupName + '';'');
+    END;
+  ');
+  EXEC tSQLt.SpyProcedure @ProcedureName = 'tSQLt.UndoTestDoubles'; /*--<-- the dropped backup table is not of interest here --<--*/
+  DECLARE @EntryTrancount INT = @@TRANCOUNT;
+
+  EXEC tSQLt.SetSummaryError 0;
+  BEGIN TRY
+    EXEC tSQLt.Run 'MyInnerTests.[test1]';
+  END TRY
+  BEGIN CATCH
+    /*-- not really interested in this error --*/
+  END CATCH;
+
+  EXEC tSQLt.AssertEquals @Expected = @EntryTrancount, @Actual = @@TRANCOUNT;
+  DECLARE @ActualResult NVARCHAR(MAX) = (SELECT Result FROM tSQLt.TestResult);
+  EXEC tSQLt.AssertEqualsString @Expected = 'FATAL', @Actual = @ActualResult;
 END;
 GO
 /*-----------------------------------------------------------------------------------------------*/
