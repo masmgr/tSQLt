@@ -124,11 +124,32 @@ jobs:
             Stop-Transcript
           }
 
+      - name: Test standalone uninstaller
+        shell: pwsh
+        run: |
+          Start-Transcript -Path "$env:RUNNER_TEMP/tSQLt-logs/uninstall.log" -Force
+          try {
+            $packagePath = "$env:RUNNER_TEMP/tSQLt-uninstall-package"
+            $clrPath = "$env:RUNNER_TEMP/tSQLt-uninstall-clr"
+            Expand-Archive ./Build/output/tSQLt/public/tSQLt.zip -DestinationPath $packagePath
+            Expand-Archive ./Build/output/tSQLtCLR/tSQLtCLR.zip -DestinationPath $clrPath
+            ./Build/Tests/Test-Uninstall.ps1 `
+              -ServerName $env:SQL_SERVER `
+              -UserName sa `
+              -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force) `
+              -UninstallScript "$packagePath/Uninstall.sql" `
+              -InstallScript "$packagePath/tSQLt.class.sql" `
+              -AssemblyPath "$clrPath/tSQLtCLR.dll" `
+              -ResultFile ./Build/output/StandaloneUninstall/TestResults_StandaloneUninstall.xml
+          } finally {
+            Stop-Transcript
+          }
+
       - name: Summarize test results
         if: always()
         shell: pwsh
         run: |
-          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
+          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results, ./Build/output/StandaloneUninstall -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
           $summary = @("### tSQLt test results (SQL Server ${{ matrix.sqlserver }})", "", "| Suite | Tests | Failures | Errors | Skipped |", "|---|---:|---:|---:|---:|")
           $totalTests = 0
           $totalFailures = 0
@@ -156,6 +177,7 @@ jobs:
           path: |
             Build/temp/Validate/Results/
             Build/output/Validate/
+            Build/output/StandaloneUninstall/
             ${{ runner.temp }}/tSQLt-logs/
           if-no-files-found: warn
           retention-days: 30
