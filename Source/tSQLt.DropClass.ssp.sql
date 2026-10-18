@@ -5,6 +5,7 @@ CREATE PROCEDURE tSQLt.DropClass
     @ClassName NVARCHAR(MAX)
 AS
 BEGIN
+    DECLARE @DroppedClassName NVARCHAR(MAX) = SCHEMA_NAME(ISNULL(SCHEMA_ID(@ClassName), SCHEMA_ID(PARSENAME(@ClassName,1))));
 /*SnipStart: CreateDropClassStatement.ps1*/
     DECLARE @Cmd NVARCHAR(MAX);
 
@@ -33,7 +34,17 @@ BEGIN
                O.type
              FROM sys.objects AS O
             JOIN SchemaInfo SI ON SI.SchemaId = O.schema_id
-              AND O.type NOT IN ('F')
+              AND O.type NOT IN ('F','SO')
+         ),
+         SequenceInfo(FullName, ItemType) AS
+         (/*SEQUENCES need to be dropped after the tables whose defaults reference them.
+            DropClass fails if a sequence is still referenced by an object outside of the class.*/
+           SELECT
+               QUOTENAME(SCHEMA_NAME(O.schema_id))+'.'+QUOTENAME(O.name),
+               O.type
+             FROM sys.objects AS O
+            JOIN SchemaInfo SI ON SI.SchemaId = O.schema_id
+              AND O.type IN ('SO')
          ),
          TypeInfo(FullName, ItemType) AS
          (
@@ -59,6 +70,9 @@ BEGIN
            SELECT 20, FullName, ItemType
               FROM ObjectInfo
              UNION ALL
+           SELECT 25, FullName, ItemType
+              FROM SequenceInfo
+             UNION ALL
            SELECT 30, FullName, ItemType
               FROM TypeInfo
              UNION ALL
@@ -81,6 +95,12 @@ BEGIN
 
     EXEC(@Cmd);
 /*SnipEnd: CreateDropClassStatement.ps1*/
+
+    -- A class recreated after Reset is new again, however it gets recreated.
+    -- The snapshot may be hidden for NoTransaction or removed with tSQLt itself.
+    IF OBJECT_ID('tSQLt.Private_PreviousTestClassList', 'U') IS NOT NULL
+      DELETE FROM tSQLt.Private_PreviousTestClassList
+       WHERE ClassName = @DroppedClassName;
 END;
 ---Build-
 GO
