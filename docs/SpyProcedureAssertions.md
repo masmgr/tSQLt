@@ -29,6 +29,8 @@ Failures display the selected argument values, with `<` for missing expected
 calls, `>` for extra actual calls and `=` for matches. Ordered comparisons also
 display the call position. `@Message` adds context to the failure. Argument data
 types must be supported by `tSQLt.AssertEqualsTable`.
+Text comparisons use each log column's collation, including case sensitivity,
+even when an expected temporary table inherits a different tempdb collation.
 
 Procedures must be spied on in the current database, with a valid marked log
 table, as required by `AssertProcedureCalled` and `AssertProcedureNotCalled`.

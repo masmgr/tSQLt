@@ -67,6 +67,30 @@ BEGIN
   EXEC tSQLt.AssertProcedureCalls 'AssertProcedureCallsTests.Target', 'master.dbo.Expected';
 END;
 GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test history comparison uses log collation for temporary expectations]
+AS
+BEGIN
+  ALTER TABLE AssertProcedureCallsTests.Target_SpyProcedureLog ALTER COLUMN B NVARCHAR(MAX) COLLATE Latin1_General_CS_AS NULL;
+  EXEC AssertProcedureCallsTests.Target 1, N'value';
+  CREATE TABLE #Expected(B NVARCHAR(MAX) COLLATE Latin1_General_CI_AS);
+  INSERT #Expected VALUES(N'value');
+  EXEC tSQLt.AssertProcedureCalls 'AssertProcedureCallsTests.Target', '#Expected';
+  UPDATE #Expected SET B=N'VALUE';
+  EXEC tSQLt_testutil.assertFailCalled 'EXEC tSQLt.AssertProcedureCalls ''AssertProcedureCallsTests.Target'', ''#Expected'';';
+END;
+GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test CalledWith uses log collation for temporary expectations]
+AS
+BEGIN
+  ALTER TABLE AssertProcedureCallsTests.Target_SpyProcedureLog ALTER COLUMN B NVARCHAR(MAX) COLLATE Latin1_General_CS_AS NULL;
+  EXEC AssertProcedureCallsTests.Target 1, N'value';
+  CREATE TABLE #Expected(B NVARCHAR(MAX) COLLATE Latin1_General_CI_AS);
+  INSERT #Expected VALUES(N'VALUE');
+  EXEC tSQLt_testutil.assertFailCalled 'EXEC tSQLt.AssertProcedureCalledWith ''AssertProcedureCallsTests.Target'', ''#Expected'';';
+  UPDATE #Expected SET B=N'value';
+  EXEC tSQLt.AssertProcedureCalledWith 'AssertProcedureCallsTests.Target', '#Expected';
+END;
+GO
 CREATE PROCEDURE AssertProcedureCallsTests.[test omitted arguments and default order are ignored]
 AS
 BEGIN

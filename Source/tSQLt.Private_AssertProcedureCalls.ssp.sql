@@ -44,8 +44,8 @@ BEGIN
     SET @Expected = CASE WHEN @IsTemp = 1 THEN QUOTENAME(@ExpectedName)
                         ELSE QUOTENAME(OBJECT_SCHEMA_NAME(@ExpectedId)) + '.' + QUOTENAME(OBJECT_NAME(@ExpectedId)) END;
 
-    DECLARE @Columns TABLE(name SYSNAME, column_id INT);
-    INSERT INTO @Columns
+    DECLARE @Columns TABLE(name SYSNAME, column_id INT, CollationName SYSNAME NULL);
+    INSERT INTO @Columns(name, column_id)
       SELECT name, column_id FROM sys.columns WHERE @IsTemp = 0 AND object_id = @ExpectedId
       UNION ALL
       SELECT name, column_id FROM tempdb.sys.columns WHERE @IsTemp = 1 AND object_id = @ExpectedId;
@@ -61,21 +61,31 @@ BEGIN
       RETURN;
     END;
 
+    -- Temporary expectations can inherit a different tempdb collation. Compare
+    -- text using the log column's collation, including its case sensitivity.
+    UPDATE C SET CollationName = L.collation_name FROM @Columns C
+      JOIN sys.columns L ON L.object_id = OBJECT_ID(@Log) AND L.name = C.name;
+
     DECLARE @ColumnList NVARCHAR(MAX);
-    SELECT @ColumnList = STUFF((SELECT ',' + QUOTENAME(name) FROM @Columns WHERE name <> '_id_'
+    SELECT @ColumnList = STUFF((SELECT ',' + QUOTENAME(name) +
+                                 CASE WHEN CollationName IS NULL THEN '' ELSE ' COLLATE ' + QUOTENAME(CollationName) END + ' AS ' + QUOTENAME(name)
+                               FROM @Columns WHERE name <> '_id_'
                                ORDER BY column_id FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),1,1,'');
     DECLARE @LogColumnList NVARCHAR(MAX);
-    SELECT @LogColumnList = STUFF((SELECT ',L.' + QUOTENAME(name) FROM @Columns WHERE name <> '_id_'
+    SELECT @LogColumnList = STUFF((SELECT ',L.' + QUOTENAME(name) +
+                                    CASE WHEN CollationName IS NULL THEN '' ELSE ' COLLATE ' + QUOTENAME(CollationName) END + ' AS ' + QUOTENAME(name)
+                                  FROM @Columns WHERE name <> '_id_'
                                   ORDER BY column_id FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),1,1,'');
     DECLARE @Projection NVARCHAR(MAX) = ISNULL(@ColumnList, '');
     IF @IgnoreOrder = 0
       SET @Projection = 'ROW_NUMBER() OVER(ORDER BY [_id_]) AS [_id_]' + CASE WHEN @Projection = '' THEN '' ELSE ',' + @Projection END;
     -- With no selected arguments, a constant still preserves call multiplicity.
     IF @Projection = '' SET @Projection = 'CAST(1 AS INT) AS [_id_]';
-    DECLARE @ActualProjection NVARCHAR(MAX) = @Projection;
+    DECLARE @ActualProjection NVARCHAR(MAX) = ISNULL(@LogColumnList, '');
     IF @IgnoreOrder = 0
       SET @ActualProjection = 'ROW_NUMBER() OVER(ORDER BY ' + QUOTENAME(@LogIdentityColumn) + ') AS [_id_]' +
-        CASE WHEN @ColumnList IS NULL THEN '' ELSE ',' + @ColumnList END;
+        CASE WHEN @LogColumnList IS NULL THEN '' ELSE ',' + @LogColumnList END;
+    IF @ActualProjection = '' SET @ActualProjection = 'CAST(1 AS INT) AS [_id_]';
 
     DECLARE @Sql NVARCHAR(MAX) = '';
     IF @IgnoreOrder = 0
