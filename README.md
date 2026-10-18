@@ -13,6 +13,15 @@ tSQLt allows you to implement unit tests in T-SQL. This is important as you do n
 
 tSQLt is licensed under Apache 2.0 (https://github.com/tSQLt-org/tSQLt/blob/master/Build/License.txt)
 
+## Exact string comparisons
+
+Use `tSQLt.AssertEqualsStringExact` to compare `NVARCHAR(MAX)` values by their
+complete storage bytes and lengths, including case, trailing spaces, line endings,
+and Unicode representation. Two NULLs are equal; NULL and an empty string differ.
+Failure messages show escaped values and the first differing UTF-16 code unit.
+See [AssertEqualsStringExact](docs/AssertEqualsStringExact.md) for usage and
+diagnostic details.
+
 ## Removing tSQLt
 
 To remove tSQLt, run `Uninstall.sql` from the download in the database containing
