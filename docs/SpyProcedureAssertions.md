@@ -19,6 +19,9 @@ Order is ignored by default. To check order, add a unique, non-NULL `_id_`
 column to the expected table and pass `@IgnoreOrder=0`. Its ascending order
 defines the expected sequence; its numbers need not match the log identity values.
 The `_id_` column is reserved metadata and is ignored when order is ignored.
+An argument named `@_id_` cannot be selected with this API because that name is
+reserved. Ordering uses the log's identity column even when SpyProcedure renames
+it to avoid argument-name collisions; the identity column is not an argument.
 A table containing only `_id_` can check call counts for procedures without
 arguments. An empty expected table asserts that no calls occurred.
 
@@ -26,6 +29,10 @@ Failures display the selected argument values, with `<` for missing expected
 calls, `>` for extra actual calls and `=` for matches. Ordered comparisons also
 display the call position. `@Message` adds context to the failure. Argument data
 types must be supported by `tSQLt.AssertEqualsTable`.
+
+Procedures must be spied on in the current database, with a valid marked log
+table, as required by `AssertProcedureCalled` and `AssertProcedureNotCalled`.
+Expected tables must be local temporary tables or tables in the current database.
 
 `tSQLt.AssertProcedureCalledWith @ProcedureName, @Expected, @Message = NULL`
 uses the same projection and comparison rules to assert that at least one call

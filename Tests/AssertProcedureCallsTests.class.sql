@@ -7,6 +7,66 @@ BEGIN
   EXEC tSQLt.SpyProcedure 'AssertProcedureCallsTests.Target';
 END;
 GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test ordered calls use renamed log identity instead of argument values]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE AssertProcedureCallsTests.Collision @_id_ INT, @_id__ INT, @A INT AS RETURN;');
+  EXEC tSQLt.SpyProcedure 'AssertProcedureCallsTests.Collision';
+  EXEC AssertProcedureCallsTests.Collision 20, 30, 100;
+  EXEC AssertProcedureCallsTests.Collision 10, 40, 200;
+  CREATE TABLE #Expected(_id_ INT, _id__ INT, A INT);
+  INSERT #Expected VALUES(1,30,100),(2,40,200);
+  EXEC tSQLt.AssertProcedureCalls 'AssertProcedureCallsTests.Collision', '#Expected', @IgnoreOrder=0;
+  EXEC tSQLt.AssertProcedureCalled 'AssertProcedureCallsTests.Collision', 2;
+END;
+GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test renamed log identity is not an argument column]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE AssertProcedureCallsTests.Collision @_id_ INT AS RETURN;');
+  EXEC tSQLt.SpyProcedure 'AssertProcedureCallsTests.Collision';
+  CREATE TABLE #Expected(_id__ INT);
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern='%unknown argument column%';
+  EXEC tSQLt.AssertProcedureCalledWith 'AssertProcedureCallsTests.Collision', '#Expected';
+END;
+GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test ordinary log table does not make an unspied procedure valid]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE AssertProcedureCallsTests.Unspied AS RETURN;');
+  CREATE TABLE AssertProcedureCallsTests.Unspied_SpyProcedureLog(_id_ INT, A INT);
+  CREATE TABLE #Expected(A INT);
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern='%SpyProcedure has not been applied%';
+  EXEC tSQLt.AssertProcedureCalls 'AssertProcedureCallsTests.Unspied', '#Expected';
+END;
+GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test CalledWith rejects an invalid log marker]
+AS
+BEGIN
+  EXEC sys.sp_updateextendedproperty @name=N'tSQLt.IsTempObject', @value=0,
+    @level0type=N'SCHEMA', @level0name=N'AssertProcedureCallsTests',
+    @level1type=N'TABLE', @level1name=N'Target_SpyProcedureLog';
+  CREATE TABLE #Expected(A INT);
+  INSERT #Expected VALUES(1);
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern='%log table is missing or invalid%';
+  EXEC tSQLt.AssertProcedureCalledWith 'AssertProcedureCallsTests.Target', '#Expected';
+END;
+GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test procedures in other databases are rejected]
+AS
+BEGIN
+  CREATE TABLE #Expected(A INT);
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern='%procedure in the current database%';
+  EXEC tSQLt.AssertProcedureCalls 'master.dbo.Target', '#Expected';
+END;
+GO
+CREATE PROCEDURE AssertProcedureCallsTests.[test expected tables in other databases are rejected]
+AS
+BEGIN
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern='%expected table must be in the current database%';
+  EXEC tSQLt.AssertProcedureCalls 'AssertProcedureCallsTests.Target', 'master.dbo.Expected';
+END;
+GO
 CREATE PROCEDURE AssertProcedureCallsTests.[test omitted arguments and default order are ignored]
 AS
 BEGIN
@@ -260,7 +320,7 @@ AS
 BEGIN
   EXEC('CREATE PROCEDURE AssertProcedureCallsTests.Unspied AS RETURN;');
   CREATE TABLE #Expected(A INT);
-  EXEC tSQLt.ExpectException @ExpectedMessagePattern = '%must have a SpyProcedure log%';
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern = '%SpyProcedure has not been applied%';
   EXEC tSQLt.AssertProcedureCalls 'AssertProcedureCallsTests.Unspied', '#Expected';
 END;
 GO

@@ -66,7 +66,7 @@ BEGIN
   IF(EXISTS(SELECT 1 
               FROM sys.parameters AS P
              WHERE P.object_id IN(@FunctionObjectId,@FakeFunctionObjectId)
-             GROUP BY P.name, P.max_length, P.precision, P.scale, P.parameter_id
+             GROUP BY P.name, P.system_type_id, P.user_type_id, P.max_length, P.precision, P.scale, P.parameter_id
             HAVING COUNT(1) <> 2
            ))
   BEGIN

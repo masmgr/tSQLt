@@ -9,14 +9,15 @@ CREATE PROCEDURE tSQLt.Private_AssertProcedureCalls
     @CalledWith BIT = 0
 AS
 BEGIN
-    DECLARE @ProcedureObjectId INT = OBJECT_ID(@ProcedureName);
+    DECLARE @ReturnCode INT, @CallCount BIGINT, @QuotedProcedureName NVARCHAR(MAX);
+    EXEC @ReturnCode = tSQLt.Private_GetSpyProcedureCallCount
+      @ProcedureName, @CallCount OUTPUT, @QuotedProcedureName OUTPUT;
+    IF @ReturnCode <> 0 RETURN;
+    DECLARE @ProcedureObjectId INT = OBJECT_ID(@QuotedProcedureName);
     DECLARE @Log NVARCHAR(MAX) = QUOTENAME(OBJECT_SCHEMA_NAME(@ProcedureObjectId)) + '.' +
                                QUOTENAME(OBJECT_NAME(@ProcedureObjectId) + '_SpyProcedureLog');
-    IF @Log IS NULL OR OBJECT_ID(@Log, 'U') IS NULL
-    BEGIN
-      RAISERROR('AssertProcedureCalls: procedure must have a SpyProcedure log.',16,10);
-      RETURN;
-    END;
+    DECLARE @LogIdentityColumn SYSNAME;
+    SELECT @LogIdentityColumn = name FROM sys.columns WHERE object_id = OBJECT_ID(@Log) AND is_identity = 1;
     IF @IgnoreOrder IS NULL
     BEGIN
       RAISERROR('AssertProcedureCalls: @IgnoreOrder must be 0 or 1.',16,10);
@@ -24,6 +25,12 @@ BEGIN
     END;
 
     -- Resolve identifiers before using them in dynamic SQL, including local temp tables.
+    IF PARSENAME(@Expected,4) IS NOT NULL
+       OR (PARSENAME(@Expected,3) IS NOT NULL AND PARSENAME(@Expected,3) <> DB_NAME())
+    BEGIN
+      RAISERROR('AssertProcedureCalls: expected table must be in the current database or a local temporary table.',16,10);
+      RETURN;
+    END;
     DECLARE @ExpectedId INT;
     DECLARE @ExpectedName SYSNAME = PARSENAME(@Expected,1);
     DECLARE @IsTemp BIT = CASE WHEN LEFT(@ExpectedName,1) = '#' THEN 1 ELSE 0 END;
@@ -43,7 +50,7 @@ BEGIN
       UNION ALL
       SELECT name, column_id FROM tempdb.sys.columns WHERE @IsTemp = 1 AND object_id = @ExpectedId;
     IF EXISTS(SELECT 1 FROM @Columns C WHERE C.name <> '_id_' AND NOT EXISTS
-                (SELECT 1 FROM sys.columns L WHERE L.object_id = OBJECT_ID(@Log) AND L.name = C.name))
+                (SELECT 1 FROM sys.columns L WHERE L.object_id = OBJECT_ID(@Log) AND L.name = C.name AND L.is_identity = 0))
     BEGIN
       RAISERROR('AssertProcedureCalls: expected table contains an unknown argument column.',16,10);
       RETURN;
@@ -65,6 +72,10 @@ BEGIN
       SET @Projection = 'ROW_NUMBER() OVER(ORDER BY [_id_]) AS [_id_]' + CASE WHEN @Projection = '' THEN '' ELSE ',' + @Projection END;
     -- With no selected arguments, a constant still preserves call multiplicity.
     IF @Projection = '' SET @Projection = 'CAST(1 AS INT) AS [_id_]';
+    DECLARE @ActualProjection NVARCHAR(MAX) = @Projection;
+    IF @IgnoreOrder = 0
+      SET @ActualProjection = 'ROW_NUMBER() OVER(ORDER BY ' + QUOTENAME(@LogIdentityColumn) + ') AS [_id_]' +
+        CASE WHEN @ColumnList IS NULL THEN '' ELSE ',' + @ColumnList END;
 
     DECLARE @Sql NVARCHAR(MAX) = '';
     IF @IgnoreOrder = 0
@@ -74,7 +85,7 @@ BEGIN
       SET @Sql = @Sql + 'IF (SELECT COUNT_BIG(*) FROM ' + @Expected + ') <> 1
         BEGIN RAISERROR(''AssertProcedureCalledWith: expected table must contain exactly one row.'',16,10); RETURN; END;';
     SET @Sql = @Sql + 'SELECT ' + @Projection + ' INTO #tSQLt_ExpectedProcedureCalls FROM ' + @Expected + ';
-      SELECT ' + CASE WHEN @CalledWith = 1 THEN 'TOP(1) ' ELSE '' END + @Projection +
+      SELECT ' + CASE WHEN @CalledWith = 1 THEN 'TOP(1) ' ELSE '' END + @ActualProjection +
       ' INTO #tSQLt_ActualProcedureCalls FROM ' + @Log + ' AS L' +
       CASE WHEN @CalledWith = 1 AND @ColumnList IS NOT NULL THEN
         ' WHERE EXISTS(SELECT ' + @ColumnList + ' FROM ' + @Expected +
