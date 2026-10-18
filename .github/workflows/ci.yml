@@ -9,8 +9,12 @@ name: CI
 on:
   push:
     branches:
+      - develop
       - main
   pull_request:
+    branches:
+      - develop
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -95,20 +99,30 @@ jobs:
       - name: Build
         shell: pwsh
         run: |
-          ./Build/LocalBuild.ps1 `
-            -ServerName $env:SQL_SERVER `
-            -UserName sa `
-            -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force) `
-            -pfxFilePath $env:PFX_PATH `
-            -pfxPassword (ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force)
+          Start-Transcript -Path "$env:RUNNER_TEMP/tSQLt-logs/build.log" -Force
+          try {
+            ./Build/LocalBuild.ps1 `
+              -ServerName $env:SQL_SERVER `
+              -UserName sa `
+              -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force) `
+              -pfxFilePath $env:PFX_PATH `
+              -pfxPassword (ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force)
+          } finally {
+            Stop-Transcript
+          }
 
       - name: Validate
         shell: pwsh
         run: |
-          ./Build/LocalValidate.ps1 `
-            -ServerName $env:SQL_SERVER `
-            -UserName sa `
-            -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force)
+          Start-Transcript -Path "$env:RUNNER_TEMP/tSQLt-logs/validate.log" -Force
+          try {
+            ./Build/LocalValidate.ps1 `
+              -ServerName $env:SQL_SERVER `
+              -UserName sa `
+              -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force)
+          } finally {
+            Stop-Transcript
+          }
 
       - name: Summarize test results
         if: always()
@@ -116,14 +130,23 @@ jobs:
         run: |
           $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
           $summary = @("### tSQLt test results (SQL Server ${{ matrix.sqlserver }})", "", "| Suite | Tests | Failures | Errors | Skipped |", "|---|---:|---:|---:|---:|")
+          $totalTests = 0
+          $totalFailures = 0
+          $totalErrors = 0
           foreach ($file in $resultFiles) {
             [xml]$xml = Get-Content -Path $file.FullName -Raw
             $suites = @($xml.SelectNodes('//testsuite'))
             $sum = { param($attribute) $total = 0; foreach ($s in $suites) { $value = $s.GetAttribute($attribute); if ($value) { $total += [int]$value } }; $total }
             $summary += "| $($file.BaseName) | $(& $sum 'tests') | $(& $sum 'failures') | $(& $sum 'errors') | $(& $sum 'skipped') |"
+            $totalTests += & $sum 'tests'
+            $totalFailures += & $sum 'failures'
+            $totalErrors += & $sum 'errors'
           }
           if (-not $resultFiles) { $summary += "| (no result files) | | | | |" }
           $summary -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($totalTests -eq 0 -or $totalFailures -gt 0 -or $totalErrors -gt 0) {
+            throw "Validation did not pass: $totalTests tests, $totalFailures failures, $totalErrors errors. See the test results and logs."
+          }
 
       - name: Upload test results
         if: always()
@@ -133,6 +156,7 @@ jobs:
           path: |
             Build/temp/Validate/Results/
             Build/output/Validate/
+            ${{ runner.temp }}/tSQLt-logs/
           if-no-files-found: warn
           retention-days: 30
 
