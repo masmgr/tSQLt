@@ -80,6 +80,21 @@ BEGIN
   EXEC tSQLt.AssertEquals 1, @Count;
 END;
 GO
+CREATE PROCEDURE CaseTests.[test legacy NoTransaction tests restore case registrations]
+AS
+BEGIN
+  EXEC('--[@'+'tSQLt:NoTransaction](DEFAULT)
+    CREATE PROCEDURE CaseFixture.[test legacy no transaction] AS DELETE FROM tSQLt.Private_CaseTest;');
+  EXEC tSQLt.Run 'CaseFixture.[test legacy no transaction]', 'tSQLt.NullTestResultFormatter';
+  DECLARE @Count INT=(SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result='Success');
+  EXEC tSQLt.AssertEquals 1, @Count;
+  SET @Count=(SELECT COUNT(*) FROM tSQLt.Private_CaseTest WHERE TestObjectId=OBJECT_ID('CaseFixture.[test cases]'));
+  EXEC tSQLt.AssertEquals 1, @Count;
+  EXEC tSQLt.Run 'CaseFixture.[test cases]', 'tSQLt.NullTestResultFormatter';
+  SET @Count=(SELECT COUNT(*) FROM tSQLt.TestResult WHERE CaseState='Completed');
+  EXEC tSQLt.AssertEquals 2, @Count;
+END;
+GO
 CREATE PROCEDURE CaseTests.[test list exposes stable identity and independent execution mode]
 AS
 BEGIN

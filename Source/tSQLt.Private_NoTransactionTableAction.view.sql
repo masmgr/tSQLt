@@ -9,6 +9,7 @@ SELECT CAST(Name AS NVARCHAR(MAX)) Name, CAST(Action AS NVARCHAR(MAX)) Action
     VALUES('[tSQLt].[Private_PreviousTestClassList]','Hide'),
           ('[tSQLt].[Run_LastExecution]','Hide'),
           ('[tSQLt].[Private_Configurations]','Restore'),
+          ('[tSQLt].[Private_CaseTest]','Restore'),
           ('[tSQLt].[CaptureOutputLog]','Truncate'),
           ('[tSQLt].[Private_RenamedObjectLog]','Ignore'),
           ('[tSQLt].[Private_Seize]','Ignore'),
