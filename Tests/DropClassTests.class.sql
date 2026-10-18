@@ -249,6 +249,20 @@ BEGIN
     END
 END;
 GO
+--[@tSQLt:MinSqlMajorVersion](11)
+CREATE PROC DropClassTests.[test fails if a sequence is referenced by a table outside of the class]
+AS
+BEGIN
+    EXEC('CREATE SCHEMA MyTestClass;');
+    EXEC('CREATE SEQUENCE MyTestClass.S AS INT START WITH 1;');
+    EXEC('CREATE SCHEMA MyOtherSchema;');
+    EXEC('CREATE TABLE MyOtherSchema.T(I INT DEFAULT (NEXT VALUE FOR MyTestClass.S));');
+
+    EXEC tSQLt.ExpectException @ExpectedMessagePattern = '%Cannot DROP SEQUENCE%';
+
+    EXEC tSQLt.DropClass 'MyTestClass';
+END;
+GO
 CREATE PROC DropClassTests.[test removes Inline Table-Valued Functions]
 AS
 BEGIN

@@ -370,10 +370,68 @@ BEGIN
   EXEC tSQLt.RemoveObject @ObjectName='UndoTestDoublesTests.aSimpleObject';
   EXEC ('CREATE SYNONYM UndoTestDoublesTests.aSimpleObject FOR UndoTestDoublesTests.aSimpleTable;');
   EXEC tSQLt.Private_MarktSQLtTempObject @ObjectName='UndoTestDoublesTests.aSimpleObject', @ObjectType='SYNONYM', @NewNameOfOriginalObject = '';
-  
+
   EXEC tSQLt.UndoTestDoubles;
 
-  SELECT O.object_id,SCHEMA_NAME(O.schema_id) schema_name, O.name object_name, O.type_desc 
+  SELECT O.object_id,SCHEMA_NAME(O.schema_id) schema_name, O.name object_name, O.type_desc
+    INTO #RestoredObjectIds
+    FROM sys.objects O;
+
+  SELECT * INTO #ShouldBeEmpty
+  FROM
+  (
+    SELECT 'Expected' T,* FROM (SELECT * FROM #OriginalObjectIds EXCEPT SELECT * FROM #RestoredObjectIds) E
+    UNION ALL
+    SELECT 'Actual' T,* FROM (SELECT * FROM #RestoredObjectIds EXCEPT SELECT * FROM #OriginalObjectIds) A
+  ) T;
+  EXEC tSQLt.AssertEmptyTable @TableName = '#ShouldBeEmpty';
+END;
+GO
+--[@tSQLt:MinSqlMajorVersion](11)
+CREATE PROCEDURE UndoTestDoublesTests.[test sequences renamed by RemoveObject are restored]
+AS
+BEGIN
+  EXEC ('CREATE SEQUENCE UndoTestDoublesTests.aSimpleSequence AS INT START WITH 1;');
+
+  SELECT O.object_id,SCHEMA_NAME(O.schema_id) schema_name, O.name object_name, O.type_desc
+    INTO #OriginalObjectIds
+    FROM sys.objects O;
+
+  EXEC tSQLt.RemoveObject @ObjectName='UndoTestDoublesTests.aSimpleSequence';
+
+  EXEC tSQLt.UndoTestDoubles;
+
+  SELECT O.object_id,SCHEMA_NAME(O.schema_id) schema_name, O.name object_name, O.type_desc
+    INTO #RestoredObjectIds
+    FROM sys.objects O;
+
+  SELECT * INTO #ShouldBeEmpty
+  FROM
+  (
+    SELECT 'Expected' T,* FROM (SELECT * FROM #OriginalObjectIds EXCEPT SELECT * FROM #RestoredObjectIds) E
+    UNION ALL
+    SELECT 'Actual' T,* FROM (SELECT * FROM #RestoredObjectIds EXCEPT SELECT * FROM #OriginalObjectIds) A
+  ) T;
+  EXEC tSQLt.AssertEmptyTable @TableName = '#ShouldBeEmpty';
+END;
+GO
+--[@tSQLt:MinSqlMajorVersion](11)
+CREATE PROCEDURE UndoTestDoublesTests.[test doubled sequences with IsTempObject property are deleted]
+AS
+BEGIN
+  EXEC ('CREATE SEQUENCE UndoTestDoublesTests.aSimpleSequence AS INT START WITH 1;');
+
+  SELECT O.object_id,SCHEMA_NAME(O.schema_id) schema_name, O.name object_name, O.type_desc
+    INTO #OriginalObjectIds
+    FROM sys.objects O;
+
+  EXEC tSQLt.RemoveObject @ObjectName='UndoTestDoublesTests.aSimpleSequence';
+  EXEC ('CREATE SEQUENCE UndoTestDoublesTests.aSimpleSequence AS INT START WITH 100;');
+  EXEC tSQLt.Private_MarktSQLtTempObject @ObjectName='UndoTestDoublesTests.aSimpleSequence', @ObjectType='SEQUENCE', @NewNameOfOriginalObject = '';
+
+  EXEC tSQLt.UndoTestDoubles;
+
+  SELECT O.object_id,SCHEMA_NAME(O.schema_id) schema_name, O.name object_name, O.type_desc
     INTO #RestoredObjectIds
     FROM sys.objects O;
 
