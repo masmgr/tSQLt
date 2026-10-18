@@ -44,6 +44,95 @@ BEGIN
 
 END;
 GO
+CREATE PROCEDURE UndoTestDoublesTests.[test restores a faked table with Unicode schema and object names]
+AS
+BEGIN
+  DECLARE @SchemaName NVARCHAR(MAX) = NCHAR(21517) + N'Schema';
+  DECLARE @TableName NVARCHAR(MAX) = QUOTENAME(@SchemaName) + N'.' + QUOTENAME(NCHAR(21517) + N'Table');
+  EXEC(N'CREATE SCHEMA ' + @SchemaName + N';');
+  EXEC(N'CREATE TABLE ' + @TableName + N' (Id INT);');
+  DECLARE @OriginalObjectId INT = OBJECT_ID(@TableName);
+
+  EXEC tSQLt.FakeTable @TableName = @TableName;
+
+  EXEC tSQLt.UndoTestDoubles;
+
+  DECLARE @RestoredObjectId INT = OBJECT_ID(@TableName);
+  EXEC tSQLt.AssertEquals @Expected = @OriginalObjectId, @Actual = @RestoredObjectId;
+END;
+GO
+CREATE PROCEDURE UndoTestDoublesTests.[test restores a spied procedure with a Unicode name]
+AS
+BEGIN
+  DECLARE @ProcedureName NVARCHAR(MAX) = N'UndoTestDoublesTests.' + QUOTENAME(NCHAR(21517) + N'Procedure');
+  EXEC(N'CREATE PROCEDURE ' + @ProcedureName + N' AS RETURN 42;');
+  DECLARE @OriginalObjectId INT = OBJECT_ID(@ProcedureName);
+
+  EXEC tSQLt.SpyProcedure @ProcedureName = @ProcedureName;
+
+  EXEC tSQLt.UndoTestDoubles;
+
+  DECLARE @RestoredObjectId INT = OBJECT_ID(@ProcedureName);
+  EXEC tSQLt.AssertEquals @Expected = @OriginalObjectId, @Actual = @RestoredObjectId;
+END;
+GO
+CREATE PROCEDURE UndoTestDoublesTests.[test restores an object whose current name contains Unicode]
+AS
+BEGIN
+  CREATE TABLE UndoTestDoublesTests.aSimpleTable (Id INT);
+  DECLARE @OriginalObjectId INT = OBJECT_ID(N'UndoTestDoublesTests.aSimpleTable');
+  DECLARE @NewName NVARCHAR(MAX) = NCHAR(21517) + N'RenamedTable';
+  EXEC tSQLt.Private_RenameObjectToUniqueName @SchemaName = N'UndoTestDoublesTests', @ObjectName = N'aSimpleTable', @NewName = @NewName OUTPUT;
+
+  EXEC tSQLt.UndoTestDoubles;
+
+  DECLARE @RestoredObjectId INT = OBJECT_ID(N'UndoTestDoublesTests.aSimpleTable');
+  EXEC tSQLt.AssertEquals @Expected = @OriginalObjectId, @Actual = @RestoredObjectId;
+END;
+GO
+CREATE PROCEDURE UndoTestDoublesTests.[test NoTransaction cleanup restores Unicode table and procedure names]
+AS
+BEGIN
+  EXEC tSQLt.NewTestClass 'MyInnerTests';
+  DECLARE @TableName NVARCHAR(MAX) = N'MyInnerTests.' + QUOTENAME(NCHAR(21517) + N'Table');
+  DECLARE @ProcedureName NVARCHAR(MAX) = N'MyInnerTests.' + QUOTENAME(NCHAR(21517) + N'Procedure');
+  EXEC(N'CREATE TABLE ' + @TableName + N' (Id INT);');
+  EXEC(N'INSERT INTO ' + @TableName + N' VALUES(42);');
+  EXEC(N'CREATE PROCEDURE ' + @ProcedureName + N' AS RETURN 42;');
+  DECLARE @OriginalTableId INT = OBJECT_ID(@TableName);
+  DECLARE @OriginalProcedureId INT = OBJECT_ID(@ProcedureName);
+  EXEC(N'
+    --[@' + N'tSQLt:NoTransaction](DEFAULT)
+    CREATE PROCEDURE MyInnerTests.[test Unicode doubles]
+    AS
+    BEGIN
+      DECLARE @TableName NVARCHAR(MAX) = N''MyInnerTests.'' + QUOTENAME(NCHAR(21517) + N''Table'');
+      DECLARE @ProcedureName NVARCHAR(MAX) = N''MyInnerTests.'' + QUOTENAME(NCHAR(21517) + N''Procedure'');
+      EXEC tSQLt.FakeTable @TableName = @TableName;
+      EXEC tSQLt.SpyProcedure @ProcedureName = @ProcedureName;
+      EXEC tSQLt.AssertEmptyTable @TableName = @TableName;
+    END;
+  ');
+  DECLARE @EntryTrancount INT = @@TRANCOUNT;
+
+  EXEC tSQLt.Run 'MyInnerTests.[test Unicode doubles]';
+
+  EXEC tSQLt.AssertEquals @Expected = @EntryTrancount, @Actual = @@TRANCOUNT;
+  DECLARE @ActualResult NVARCHAR(MAX) = (SELECT Result FROM tSQLt.TestResult);
+  EXEC tSQLt.AssertEqualsString @Expected = 'Success', @Actual = @ActualResult;
+  DECLARE @RestoredTableId INT = OBJECT_ID(@TableName);
+  DECLARE @RestoredProcedureId INT = OBJECT_ID(@ProcedureName);
+  EXEC tSQLt.AssertEquals @Expected = @OriginalTableId, @Actual = @RestoredTableId;
+  EXEC tSQLt.AssertEquals @Expected = @OriginalProcedureId, @Actual = @RestoredProcedureId;
+  CREATE TABLE #Actual (Id INT);
+  EXEC(N'INSERT INTO #Actual SELECT Id FROM ' + @TableName + N';');
+  DECLARE @ActualId INT = (SELECT Id FROM #Actual);
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @ActualId;
+  DECLARE @ReturnValue INT;
+  EXEC @ReturnValue = @ProcedureName;
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @ReturnValue;
+END;
+GO
 CREATE PROCEDURE UndoTestDoublesTests.[test restores many faked tables]
 AS
 BEGIN
