@@ -1110,6 +1110,66 @@ END;
 GO
 /*-----------------------------------------------------------------------------------------------*/
 GO
+CREATE PROC SpyProcedureTests.[test CallOriginal returns an output cursor]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.ReturnCursor @C CURSOR VARYING OUTPUT AS
+        BEGIN SET @C = CURSOR LOCAL STATIC FOR SELECT 42; OPEN @C; END;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.ReturnCursor', @CallOriginal = 1;
+
+  DECLARE @C CURSOR;
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.ReturnCursor';
+  EXEC @ProcedureName @C OUTPUT;
+
+  DECLARE @Status INT = CURSOR_STATUS('variable', '@C');
+  EXEC tSQLt.AssertEquals @Expected = 1, @Actual = @Status;
+  DECLARE @Actual INT;
+  FETCH NEXT FROM @C INTO @Actual;
+  CLOSE @C;
+  DEALLOCATE @C;
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @Actual;
+END;
+GO
+CREATE PROC SpyProcedureTests.[test CallOriginal returns both an output cursor and return status without variable collisions]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.ReturnCursor @C CURSOR VARYING OUTPUT, @SpyProcedureReturnValue INT AS
+        BEGIN SET @C = CURSOR LOCAL STATIC FOR SELECT @SpyProcedureReturnValue; OPEN @C; RETURN -37; END;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.ReturnCursor',
+       @CommandToExecute = 'DECLARE @SpyProcedureReturnValue1 INT;', @CallOriginal = 1;
+
+  DECLARE @C CURSOR;
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.ReturnCursor';
+  DECLARE @ReturnStatus INT;
+  EXEC @ReturnStatus = @ProcedureName @C OUTPUT, 42;
+
+  DECLARE @Status INT = CURSOR_STATUS('variable', '@C');
+  EXEC tSQLt.AssertEquals @Expected = 1, @Actual = @Status;
+  DECLARE @Actual INT;
+  FETCH NEXT FROM @C INTO @Actual;
+  CLOSE @C;
+  DEALLOCATE @C;
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @Actual;
+  EXEC tSQLt.AssertEquals @Expected = -37, @Actual = @ReturnStatus;
+END;
+GO
+CREATE PROC SpyProcedureTests.[test CallOriginal returns an empty output cursor]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.ReturnCursor @C CURSOR VARYING OUTPUT AS
+        BEGIN SET @C = CURSOR LOCAL STATIC FOR SELECT 42 WHERE 1 = 0; OPEN @C; END;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.ReturnCursor', @CallOriginal = 1;
+
+  DECLARE @C CURSOR;
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.ReturnCursor';
+  EXEC @ProcedureName @C OUTPUT;
+
+  DECLARE @Status INT = CURSOR_STATUS('variable', '@C');
+  EXEC tSQLt.AssertEquals @Expected = 0, @Actual = @Status;
+  CLOSE @C;
+  DEALLOCATE @C;
+END;
+GO
 CREATE PROC SpyProcedureTests.[test calls original procedure with cursor parameters if @CallOriginal = 1]
 AS
 BEGIN
@@ -1150,6 +1210,42 @@ GO
 /*-----------------------------------------------------------------------------------------------*/
 GO
 CREATE TYPE SpyProcedureTests.Type1 AS TABLE(A INT);
+GO
+CREATE PROC SpyProcedureTests.[test CallOriginal supports mixed cursor directions with scalar and table parameters]
+AS
+BEGIN
+  EXEC('CREATE PROCEDURE SpyProcedureTests.MixedCursors
+          @InputCursor CURSOR VARYING OUTPUT, @OutputCursor CURSOR VARYING OUTPUT,
+          @SpyProcedureCursorValue INT OUTPUT, @Rows SpyProcedureTests.Type1 READONLY
+        AS BEGIN
+          OPEN @InputCursor;
+          FETCH NEXT FROM @InputCursor INTO @SpyProcedureCursorValue;
+          CLOSE @InputCursor;
+          SET @OutputCursor = CURSOR LOCAL STATIC FOR SELECT @SpyProcedureCursorValue + A FROM @Rows;
+          OPEN @OutputCursor;
+        END;');
+  EXEC tSQLt.SpyProcedure 'SpyProcedureTests.MixedCursors',
+       @CommandToExecute = 'DECLARE @SpyProcedureCursorCommand NVARCHAR(MAX);', @CallOriginal = 1;
+
+  DECLARE @InputCursor CURSOR;
+  SET @InputCursor = CURSOR LOCAL STATIC FOR SELECT 17;
+  DECLARE @OutputCursor CURSOR;
+  DECLARE @Value INT = -1;
+  DECLARE @Rows SpyProcedureTests.Type1;
+  INSERT INTO @Rows VALUES(25);
+  DECLARE @ProcedureName NVARCHAR(MAX) = 'SpyProcedureTests.MixedCursors';
+  EXEC @ProcedureName @InputCursor, @OutputCursor OUTPUT, @Value OUTPUT, @Rows;
+
+  DECLARE @Status INT = CURSOR_STATUS('variable', '@OutputCursor');
+  EXEC tSQLt.AssertEquals @Expected = 1, @Actual = @Status;
+  DECLARE @Actual INT;
+  FETCH NEXT FROM @OutputCursor INTO @Actual;
+  CLOSE @OutputCursor;
+  DEALLOCATE @OutputCursor;
+  DEALLOCATE @InputCursor;
+  EXEC tSQLt.AssertEquals @Expected = 17, @Actual = @Value;
+  EXEC tSQLt.AssertEquals @Expected = 42, @Actual = @Actual;
+END;
 GO
 CREATE PROC SpyProcedureTests.[test calls original procedure with table valued parameters if @CallOriginal = 1]
 AS
