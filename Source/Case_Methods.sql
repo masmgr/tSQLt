@@ -18,6 +18,13 @@ CREATE PROCEDURE tSQLt.RegisterCaseTest
   @CaseProvider NVARCHAR(MAX)
 AS
 BEGIN
+  IF PARSENAME(@TestName,4) IS NOT NULL OR PARSENAME(@CaseProvider,4) IS NOT NULL
+     OR (PARSENAME(@TestName,3) IS NOT NULL AND PARSENAME(@TestName,3) <> DB_NAME())
+     OR (PARSENAME(@CaseProvider,3) IS NOT NULL AND PARSENAME(@CaseProvider,3) <> DB_NAME())
+  BEGIN
+    RAISERROR('TestName and CaseProvider must identify procedures in the current database.',16,10);
+    RETURN;
+  END;
   DECLARE @TestId INT = OBJECT_ID(@TestName, 'P');
   DECLARE @ProviderId INT = OBJECT_ID(@CaseProvider, 'P');
   IF @TestId IS NULL OR @ProviderId IS NULL OR @TestId = @ProviderId
@@ -39,6 +46,13 @@ GO
 CREATE PROCEDURE tSQLt.Private_CollectCases @TestName NVARCHAR(MAX), @CaseProvider NVARCHAR(MAX) = NULL
 AS
 BEGIN
+  IF PARSENAME(@TestName,4) IS NOT NULL OR PARSENAME(@CaseProvider,4) IS NOT NULL
+     OR (PARSENAME(@TestName,3) IS NOT NULL AND PARSENAME(@TestName,3) <> DB_NAME())
+     OR (PARSENAME(@CaseProvider,3) IS NOT NULL AND PARSENAME(@CaseProvider,3) <> DB_NAME())
+  BEGIN
+    RAISERROR('TestName and CaseProvider must identify procedures in the current database.',16,10);
+    RETURN;
+  END;
   DECLARE @Provider NVARCHAR(MAX);
   SELECT @Provider = tSQLt.Private_GetQuotedFullName(CaseProviderObjectId)
     FROM tSQLt.Private_CaseTest
@@ -147,6 +161,12 @@ CREATE PROCEDURE tSQLt.ReportCaseResults
 AS
 BEGIN
   SET NOCOUNT ON;
+  IF PARSENAME(@TestName,4) IS NOT NULL
+     OR (PARSENAME(@TestName,3) IS NOT NULL AND PARSENAME(@TestName,3) <> DB_NAME())
+  BEGIN
+    RAISERROR('TestName must identify a SQL procedure in the current database.',16,10);
+    RETURN;
+  END;
   IF OBJECT_ID(@TestName,'P') IS NULL
   BEGIN
     RAISERROR('TestName must identify a SQL procedure in the current database.',16,10);

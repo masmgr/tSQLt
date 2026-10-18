@@ -16,7 +16,7 @@ tSQLt.Private_EnableCLR.ssp.sql
 tSQLt.RemoveAssemblyKey.ssp.sql
 tSQLt.InstallAssemblyKey.ssp.sql
 tSQLt.PrepareServer.ssp.sql
-tSQLt.Private_NewTestClassList.tbl.sql
+tSQLt.Private_PreviousTestClassList.tbl.sql
 tSQLt.Private_ResetNewTestClassList.ssp.sql
 tSQLt.Private_DisallowOverwritingNonTestSchema.ssp.sql
 tSQLt.Private_QuoteClassNameForNewTestClass.sfn.sql
@@ -72,6 +72,7 @@ tSQLt.Private_AssertNoSideEffects_GenerateCommand.sfn.sql
 tSQLt.Private_AssertNoSideEffects.ssp.sql
 Run_Methods.sql
 Case_Methods.sql
+SelectedTest_Methods.sql
 tSQLt.Private_SysTypes.svw.sql
 tSQLt.Private_GetFullTypeName.sfn.sql
 tSQLt.Private_SysIndexes.svw.sql
@@ -92,6 +93,9 @@ tSQLt.Private_GenerateCreateProcedureSpyStatement.ssp.sql
 tSQLt.Private_CreateProcedureSpy.ssp.sql
 tSQLt.Private_ValidateProcedureCanBeUsedWithSpyProcedure.ssp.sql
 tSQLt.SpyProcedure.ssp.sql
+tSQLt.Private_GetSpyProcedureCallCount.ssp.sql
+tSQLt.AssertProcedureCalled.ssp.sql
+tSQLt.AssertProcedureNotCalled.ssp.sql
 tSQLt.Private_GetCommaSeparatedColumnList.sfn.sql
 tSQLt.Private_CreateResultTableForCompareTables.ssp.sql
 tSQLt.Private_ValidateThatAllDataTypesInTableAreSupported.ssp.sql
@@ -100,7 +104,16 @@ tSQLt.Private_CompareTables.ssp.sql
 tSQLt.AssertObjectExists.ssp.sql
 tSQLt.AssertObjectDoesNotExist.ssp.sql
 tSQLt.AssertEqualsString.ssp.sql
+tSQLt.AssertAlmostEquals.ssp.sql
+tSQLt.Private_CompareStringExact.sfn.sql
+tSQLt.Private_FormatStringExact.sfn.sql
+tSQLt.AssertEqualsStringExact.ssp.sql
 tSQLt.AssertEqualsTable.ssp.sql
+tSQLt.Private_AssertProcedureCalls.ssp.sql
+tSQLt.AssertProcedureCalls.ssp.sql
+tSQLt.AssertProcedureCalledWith.ssp.sql
+tSQLt.Private_CompareTablesByKey.ssp.sql
+tSQLt.AssertEqualsTableByKey.ssp.sql
 tSQLt.StubRecord.ssp.sql
 tSQLt.AssertLike.ssp.sql
 tSQLt.AssertNotEquals.ssp.sql

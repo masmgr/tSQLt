@@ -4,9 +4,16 @@ GO
 CREATE PROCEDURE tSQLt.SpyProcedure
     @ProcedureName NVARCHAR(MAX),
     @CommandToExecute NVARCHAR(MAX) = NULL,
-    @CallOriginal BIT = 0
+    @CallOriginal BIT = 0,
+    @MaxCalls INT = NULL
 AS
 BEGIN
+    IF @MaxCalls < 0
+    BEGIN
+      RAISERROR('SpyProcedure: @MaxCalls must be NULL or nonnegative.',16,10);
+      RETURN;
+    END;
+
     DECLARE @ProcedureObjectId INT;
     SELECT @ProcedureObjectId = OBJECT_ID(@ProcedureName);
 
@@ -28,7 +35,8 @@ BEGIN
            @CommandToExecute = @CommandToExecute,
            @CallOriginal = @CallOriginal,
            @CreateProcedureStatement = @CreateProcedureStatement OUT,
-           @CreateLogTableStatement = @CreateLogTableStatement OUT;
+           @CreateLogTableStatement = @CreateLogTableStatement OUT,
+           @MaxCalls = @MaxCalls;
 
     DECLARE @LogTableObjectId INT = OBJECT_ID(@LogTableName);
     IF(@LogTableObjectId IS NOT NULL)

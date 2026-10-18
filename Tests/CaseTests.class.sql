@@ -12,10 +12,78 @@ BEGIN
   EXEC tSQLt.RegisterCaseTest 'CaseFixture.[test cases]', 'CaseFixture.Cases';
 END;
 GO
+CREATE PROCEDURE CaseTests.[test selected tests expand registered cases]
+AS
+BEGIN
+  EXEC(N'ALTER PROCEDURE CaseFixture.[test cases] @CaseId NVARCHAR(128) AS
+    -'+N'-[@tSQLt:Tag](''case-selection'')
+    IF @CaseId = N''A'' EXEC tSQLt.Fail ''first failed'';');
+  EXEC tSQLt.RunSelected @Tag=N'case-selection', @NamePattern=N'CaseFixture.%',
+    @TestResultFormatter=N'tSQLt.NullTestResultFormatter';
+  DECLARE @Completed INT = (SELECT COUNT(*) FROM tSQLt.TestResult WHERE CaseState='Completed');
+  DECLARE @Failed INT = (SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result='Failure');
+  EXEC tSQLt.AssertEquals 2, @Completed;
+  EXEC tSQLt.AssertEquals 1, @Failed;
+END;
+GO
+CREATE PROCEDURE CaseTests.[test seeded and replayed class runs expand registered cases]
+AS
+BEGIN
+  DECLARE @Order XML, @Replayed XML;
+  EXEC tSQLt.Run 'CaseFixture', 'tSQLt.NullTestResultFormatter', @Seed=123, @ExecutedOrder=@Order OUTPUT;
+  DECLARE @Count INT = @Order.value('count(/TestOrder/Test)', 'INT');
+  EXEC tSQLt.AssertEquals 1, @Count;
+  SET @Count = (SELECT COUNT(*) FROM tSQLt.TestResult WHERE CaseState='Completed');
+  EXEC tSQLt.AssertEquals 2, @Count;
+  EXEC tSQLt.Run 'CaseFixture', 'tSQLt.NullTestResultFormatter', @TestOrder=@Order, @ExecutedOrder=@Replayed OUTPUT;
+  SET @Count = (SELECT COUNT(*) FROM tSQLt.TestResult WHERE CaseState='Completed');
+  EXEC tSQLt.AssertEquals 2, @Count;
+  DECLARE @Expected NVARCHAR(MAX)=CONVERT(NVARCHAR(MAX),@Order), @Actual NVARCHAR(MAX)=CONVERT(NVARCHAR(MAX),@Replayed);
+  EXEC tSQLt.AssertEqualsString @Expected, @Actual;
+END;
+GO
+CREATE PROCEDURE CaseTests.[test positional seed argument remains compatible]
+AS
+BEGIN
+  EXEC tSQLt.Run 'CaseFixture', 'tSQLt.NullTestResultFormatter', 123;
+  DECLARE @Count INT = (SELECT COUNT(*) FROM tSQLt.TestResult WHERE CaseState='Completed');
+  EXEC tSQLt.AssertEquals 2, @Count;
+END;
+GO
+CREATE PROCEDURE CaseTests.[test case selection cannot combine with execution order options]
+AS
+BEGIN
+  EXEC tSQLt.ExpectException @ExpectedMessage='CaseId cannot be combined with execution order options.';
+  EXEC tSQLt.Run 'CaseFixture.[test cases]', 'tSQLt.NullTestResultFormatter', @Seed=123, @CaseId='A';
+END;
+GO
+CREATE PROCEDURE CaseTests.[test registration rejects procedures in other databases]
+AS
+BEGIN
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern='%procedures in the current database%';
+  EXEC tSQLt.RegisterCaseTest 'master.dbo.test cases', 'CaseFixture.Cases';
+END;
+GO
+CREATE PROCEDURE CaseTests.[test listing rejects procedures in other databases]
+AS
+BEGIN
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern='%procedures in the current database%';
+  EXEC tSQLt.ListCases 'master.dbo.test cases';
+END;
+GO
+CREATE PROCEDURE CaseTests.[test reporting rejects providers in other databases]
+AS
+BEGIN
+  CREATE TABLE #tSQLt_CaseResults(CaseId NVARCHAR(MAX),Result NVARCHAR(MAX),Msg NVARCHAR(MAX));
+  EXEC tSQLt.ReportCaseResults 'CaseFixture.[test cases]', 'master.dbo.Cases';
+  DECLARE @Count INT=(SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result='Error' AND Msg LIKE '%procedures in the current database%');
+  EXEC tSQLt.AssertEquals 1, @Count;
+END;
+GO
 CREATE PROCEDURE CaseTests.[test list exposes stable identity and independent execution mode]
 AS
 BEGIN
-  CREATE TABLE #Actual(TestName NVARCHAR(MAX),CaseId NVARCHAR(128),DisplayName NVARCHAR(512),ExecutionMode NVARCHAR(20));
+  CREATE TABLE #Actual(TestName NVARCHAR(MAX) COLLATE DATABASE_DEFAULT,CaseId NVARCHAR(128) COLLATE DATABASE_DEFAULT,DisplayName NVARCHAR(512) COLLATE DATABASE_DEFAULT,ExecutionMode NVARCHAR(20) COLLATE DATABASE_DEFAULT);
   INSERT #Actual EXEC tSQLt.ListCases 'CaseFixture.[test cases]';
   SELECT N'[CaseFixture].[test cases]' TestName,N'A' CaseId,N'first' DisplayName,N'Independent' ExecutionMode INTO #Expected
   UNION ALL SELECT N'[CaseFixture].[test cases]',N'B',N'second',N'Independent';

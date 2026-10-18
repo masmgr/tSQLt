@@ -2,7 +2,9 @@
 
 Case tests are opt-in. Unregistered procedures keep their existing execution,
 transaction, annotation and result-formatting behavior. Register a test body and
-a provider once, then use the usual `Run`, `RunAll` or `RunNew` entry points.
+a provider once, then use the usual `Run`, `RunAll`, `RunNew` or `RunSelected`
+entry points. Selection filters apply to the test procedure; its selected cases
+then expand into independent result rows.
 
 ## Independent execution
 
@@ -51,6 +53,14 @@ IDs must be nonempty and at most 128 UTF-16 code units; display names must be
 nonempty and at most 512. Empty lists, invalid metadata, duplicate IDs and
 provider errors are errors. An unknown selector is an error. `Run @CaseId`
 requires a specific registered procedure, rather than a class.
+
+`@CaseId` is appended after the existing `Run` parameters (`@TestName`,
+`@TestResultFormatter`, `@Seed`, `@TestOrder`, `@ExecutedOrder`), preserving
+position-based seed calls. Use a named `@CaseId` argument. Single-case selection
+cannot be combined with execution-order recording or replay, which require a
+class. Seeded class runs and class replay expand registered case tests normally.
+The order XML records test procedures, not the individual case plan; stable
+provider IDs remain required when replaying a class containing case tests.
 
 For each run, discovery happens once and the selected plan is frozen before
 execution. Every planned case receives an initial `Error` / `NotRun` result.

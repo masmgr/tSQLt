@@ -29,12 +29,13 @@ AS
 BEGIN
     DECLARE @SPos INT;SET @SPos = 1;
     DECLARE @EPos INT;
-    DECLARE @Len INT; SET @Len = LEN(@Message);
+    DECLARE @Len INT;
     DECLARE @SubMsg NVARCHAR(MAX);
     DECLARE @Cmd NVARCHAR(MAX);
     
     DECLARE @CleanedMessage NVARCHAR(MAX);
     SET @CleanedMessage = REPLACE(@Message,'%','%%');
+    SET @Len = LEN(@CleanedMessage);
     
     WHILE (@SPos <= @Len)
     BEGIN
