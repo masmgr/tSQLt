@@ -1,5 +1,20 @@
 # AssertEqualsTableByKey
 
+The optional final parameter `@ExactStringColumns NVARCHAR(MAX) = NULL` selects
+non-key character columns for exact comparison. For example,
+`@ExactStringColumns=N'Name,[Description, detail]'` uses the same bracketed
+identifier-list syntax as `@KeyColumns`. Empty, duplicate, unknown, non-character
+or key column specifications are usage errors. Columns must exist on both sides.
+
+Each selected value is converted to NVARCHAR(MAX) on its own input side before
+common-type normalization. Its complete UTF-16 bytes and length are compared,
+including case, width, trailing spaces, line endings and embedded zero units.
+NULL equals NULL but differs from an empty string. Diagnostics escape values
+and report the first differing UTF-16 unit (one-based); abbreviated displayed
+values never drive equality. This does not compare original varchar encodings.
+Keys and unspecified columns keep ordinary comparison semantics. Omitting the
+parameter retains the existing diagnostic format and behavior.
+
 Compares rows using an explicitly supplied unique key and reports individual
 column changes. The existing `tSQLt.AssertEqualsTable` remains available for
 comparisons that include duplicate rows and do not require a key.

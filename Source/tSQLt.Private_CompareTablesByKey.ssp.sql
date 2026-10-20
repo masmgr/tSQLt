@@ -8,7 +8,8 @@ CREATE PROCEDURE tSQLt.Private_CompareTablesByKey
   @Message NVARCHAR(MAX),
   @ExpectedSnapshot NVARCHAR(MAX),
   @ActualSnapshot NVARCHAR(MAX),
-  @ResultTable NVARCHAR(MAX)
+  @ResultTable NVARCHAR(MAX),
+  @ExactStringColumns NVARCHAR(MAX) = NULL
 AS
 BEGIN
   DECLARE @Keys TABLE (Ordinal INT IDENTITY(1,1), Name NVARCHAR(128) COLLATE DATABASE_DEFAULT);
@@ -65,6 +66,63 @@ BEGIN
     SET @Pos = @Pos+1;
   END;
 
+  DECLARE @Exact TABLE(Ordinal INT IDENTITY(1,1),Name NVARCHAR(128) COLLATE DATABASE_DEFAULT);
+  IF @ExactStringColumns IS NOT NULL
+  BEGIN
+  -- Parse a list of identifiers, including escaped brackets and quoted commas.
+SET @Pos = 1;
+  SET @Len = LEN(@ExactStringColumns);
+  IF NULLIF(LTRIM(RTRIM(@ExactStringColumns)),N'') IS NULL GOTO InvalidExact;
+  WHILE @Pos <= @Len
+  BEGIN
+    WHILE @Pos <= @Len AND SUBSTRING(@ExactStringColumns,@Pos,1) IN (N' ',NCHAR(9),NCHAR(10),NCHAR(13)) SET @Pos = @Pos+1;
+    SET @Token = N'';
+    IF SUBSTRING(@ExactStringColumns,@Pos,1) = N'['
+    BEGIN
+      SET @Pos = @Pos+1;
+      SET @Closed = 0;
+      WHILE @Pos <= @Len AND @Closed = 0
+      BEGIN
+        SET @Ch = SUBSTRING(@ExactStringColumns,@Pos,1);
+        IF @Ch = N']'
+        BEGIN
+          IF SUBSTRING(@ExactStringColumns,@Pos+1,1) = N']' SET @Pos = @Pos+1;
+          ELSE SET @Closed = 1;
+        END;
+        IF @Closed = 0 SET @Token = @Token+@Ch;
+        SET @Pos = @Pos+1;
+      END;
+      IF @Closed = 0 GOTO InvalidExact;
+      WHILE @Pos <= @Len AND SUBSTRING(@ExactStringColumns,@Pos,1) IN (N' ',NCHAR(9),NCHAR(10),NCHAR(13)) SET @Pos = @Pos+1;
+      IF @Pos <= @Len AND SUBSTRING(@ExactStringColumns,@Pos,1) <> N',' GOTO InvalidExact;
+    END
+    ELSE
+    BEGIN
+      WHILE @Pos <= @Len AND SUBSTRING(@ExactStringColumns,@Pos,1) <> N','
+      BEGIN
+        SET @Ch = SUBSTRING(@ExactStringColumns,@Pos,1);
+        IF @Ch IN (N'[',N']') GOTO InvalidExact;
+        SET @Token = @Token+@Ch;
+        SET @Pos = @Pos+1;
+      END;
+      WHILE DATALENGTH(@Token)>0 AND RIGHT(@Token,1) IN (N' ',NCHAR(9),NCHAR(10),NCHAR(13))
+        SET @Token = LEFT(@Token,DATALENGTH(@Token)/2-1);
+    END;
+    IF LEN(@Token) = 0 OR DATALENGTH(@Token) > 256 GOTO InvalidExact;
+    IF EXISTS(SELECT 1 FROM @Exact WHERE Name = @Token) GOTO InvalidExact;
+    IF NOT EXISTS(SELECT 1 FROM @Columns WHERE Name = @Token) GOTO InvalidExact;
+    INSERT @Exact(Name) VALUES(@Token);
+    IF @Pos = @Len AND SUBSTRING(@ExactStringColumns,@Pos,1) = N',' GOTO InvalidExact;
+    SET @Pos = @Pos+1;
+  END;
+
+  END;
+  IF EXISTS(SELECT 1 FROM @Exact X JOIN @Columns C ON C.Name=X.Name
+      WHERE C.TypeId NOT IN(167,175,231,239) OR EXISTS(SELECT 1 FROM @Keys K WHERE K.Name=X.Name)
+         OR NOT EXISTS(SELECT 1 FROM sys.columns A WHERE A.object_id=OBJECT_ID(@ActualSnapshot)
+             AND A.name COLLATE DATABASE_DEFAULT=X.Name AND A.system_type_id IN(167,175,231,239)))
+    GOTO InvalidExact;
+
   IF EXISTS(SELECT 1 FROM @Columns E WHERE NOT EXISTS
     (SELECT 1 FROM sys.columns A WHERE A.object_id = OBJECT_ID(@ActualSnapshot)
        AND A.name COLLATE DATABASE_DEFAULT = E.Name))
@@ -91,7 +149,7 @@ BEGIN
 
   -- UNION ALL selects a common SQL type before key uniqueness and value comparison.
   -- This also detects keys such as varchar '01' and '1' that become equal to int 1.
-  SELECT @Projection = (SELECT N','+QUOTENAME(Name)+N' AS '+QUOTENAME(N'C'+CAST(Ordinal AS NVARCHAR(10))) FROM @Columns ORDER BY Ordinal FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),
+  SELECT @Projection = (SELECT N','+CASE WHEN EXISTS(SELECT 1 FROM @Exact X WHERE X.Name=C.Name) THEN N'CONVERT(NVARCHAR(MAX),'+QUOTENAME(Name)+N') COLLATE DATABASE_DEFAULT' ELSE QUOTENAME(Name) END+N' AS '+QUOTENAME(N'C'+CAST(Ordinal AS NVARCHAR(10))) FROM @Columns C ORDER BY Ordinal FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)'),
     @NormalizedProjection = (SELECT N',C'+CAST(Ordinal AS NVARCHAR(10)) FROM @Columns ORDER BY Ordinal FOR XML PATH(''),TYPE).value('.','NVARCHAR(MAX)');
   SET @Common = N';WITH Normalized AS (SELECT 0 Side'+@Projection+N' FROM '+@ExpectedSnapshot+N' UNION ALL SELECT 1'+@Projection+N' FROM '+@ActualSnapshot+N')';
   -- Values are compared after UNION ALL type conversion, so format them by that common type,
@@ -160,6 +218,16 @@ BEGIN
       CASE WHEN @TypeId IN (165,173) THEN N',1)' WHEN @TypeId IN (59,60,62,122) THEN N',2)' WHEN @TypeId IN (58,61) THEN N',121)' ELSE N')' END;
     SET @EValue = REPLACE(@Expr,N'{alias}',N'E');
     SET @AValue = REPLACE(@Expr,N'{alias}',N'A');
+    IF EXISTS(SELECT 1 FROM @Exact WHERE Name=@Name)
+    BEGIN
+      SET @EValue=N'tSQLt.Private_FormatStringExact(E.C'+CAST(@Ordinal AS NVARCHAR(10))+N')';
+      SET @AValue=N'tSQLt.Private_FormatStringExact(A.C'+CAST(@Ordinal AS NVARCHAR(10))+N')';
+      SET @Values=@Values+N' UNION ALL SELECT N'''+REPLACE(@Name,'''','''''')+N''','+@EValue+
+        N'+N'' (first difference: ''+CONVERT(NVARCHAR(20),X.FirstDifference)+N'')'','+@AValue+
+        N' FROM tSQLt.Private_CompareStringExact(E.C'+CAST(@Ordinal AS NVARCHAR(10))+N',A.C'+CAST(@Ordinal AS NVARCHAR(10))+
+        N') X WHERE E.[Present]=1 AND A.[Present]=1 AND X.IsEqual=0';
+    END;
+    ELSE
     SET @Values = @Values+N' UNION ALL SELECT N'''+REPLACE(@Name,'''','''''')+N''','+@EValue+N','+@AValue+
       N' WHERE E.[Present]=1 AND A.[Present]=1 AND EXISTS(SELECT E.C'+CAST(@Ordinal AS NVARCHAR(10))+N' EXCEPT SELECT A.C'+CAST(@Ordinal AS NVARCHAR(10))+N')';
     FETCH NEXT FROM Cols INTO @Ordinal,@Name,@TypeId;
@@ -193,6 +261,9 @@ BEGIN
     SET @Text = ISNULL(@Message+CHAR(13)+CHAR(10),N'')+N'Unexpected/missing resultset rows or changed column values!'+CHAR(13)+CHAR(10)+@Text;
     EXEC tSQLt.Fail @Text;
   END;
+  RETURN;
+InvalidExact:
+  RAISERROR('AssertEqualsTableByKey: @ExactStringColumns must list distinct non-key string columns present in both tables.',16,10);
   RETURN;
 InvalidKeys:
   RAISERROR('AssertEqualsTableByKey: @KeyColumns must be a nonempty list of distinct column names present in Expected. Use brackets to quote identifiers.',16,10);

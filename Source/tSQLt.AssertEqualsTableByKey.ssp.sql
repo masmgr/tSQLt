@@ -5,7 +5,8 @@ CREATE PROCEDURE tSQLt.AssertEqualsTableByKey
   @Expected NVARCHAR(MAX),
   @Actual NVARCHAR(MAX),
   @KeyColumns NVARCHAR(MAX),
-  @Message NVARCHAR(MAX) = NULL
+  @Message NVARCHAR(MAX) = NULL,
+  @ExactStringColumns NVARCHAR(MAX) = NULL
 AS
 BEGIN
   EXEC tSQLt.AssertObjectExists @Expected;
@@ -44,7 +45,7 @@ BEGIN
     EXEC(@Cmd);
     EXEC tSQLt.Private_MarktSQLtTempObject @ObjectName=@ESnapshot,@ObjectType=N'TABLE';
     EXEC tSQLt.Private_MarktSQLtTempObject @ObjectName=@ASnapshot,@ObjectType=N'TABLE';
-    EXEC tSQLt.Private_CompareTablesByKey @KeyColumns,@Expected,@Actual,@Message,@ESnapshot,@ASnapshot,@Result;
+    EXEC tSQLt.Private_CompareTablesByKey @KeyColumns,@Expected,@Actual,@Message,@ESnapshot,@ASnapshot,@Result,@ExactStringColumns;
   END TRY
   BEGIN CATCH
     DECLARE @Error NVARCHAR(MAX),@Severity INT,@State INT;
