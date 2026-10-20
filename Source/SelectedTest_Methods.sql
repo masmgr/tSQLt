@@ -163,6 +163,16 @@ BEGIN
   SET NOCOUNT ON;
   DECLARE @FullName NVARCHAR(MAX),@SchemaId INT;
   DECLARE @SetUp NVARCHAR(MAX),@CleanUp NVARCHAR(MAX);
+  IF EXISTS(SELECT 1 FROM #SelectedTests S JOIN tSQLt.Private_ClassFixture F ON F.ClassId=S.SchemaId)
+     AND (@@TRANCOUNT<>0 OR EXISTS(SELECT 1 FROM #SelectedTests S
+         CROSS APPLY tSQLt.Private_ListTestAnnotations(S.ObjectId) A
+         WHERE A.Annotation LIKE N'tSQLt.[[]@tSQLt:NoTransaction]%'))
+  BEGIN
+    RAISERROR('Fixture execution plans require no caller transaction and cannot contain NoTransaction.',16,10);
+    RETURN;
+  END;
+  DECLARE @FixtureClasses TABLE(ClassId INT PRIMARY KEY);
+  DECLARE @FixtureSelection XML,@FixtureClassName NVARCHAR(MAX);
   DECLARE TestCursor CURSOR LOCAL FAST_FORWARD FOR
     SELECT FullName,SchemaId FROM #SelectedTests ORDER BY NEWID();
   OPEN TestCursor;
@@ -171,7 +181,18 @@ BEGIN
   BEGIN
     SELECT @SetUp = NULL,@CleanUp = NULL;
     EXEC tSQLt.Private_GetClassHelperProcedureName @SchemaId,@SetUp OUT,@CleanUp OUT;
-    EXEC tSQLt.Private_RunTest @FullName,@SetUp,@CleanUp;
+    IF EXISTS(SELECT 1 FROM tSQLt.Private_ClassFixture WHERE ClassId=@SchemaId)
+    BEGIN
+      IF NOT EXISTS(SELECT 1 FROM @FixtureClasses WHERE ClassId=@SchemaId)
+      BEGIN
+        SELECT @FixtureSelection=(SELECT ROW_NUMBER() OVER(ORDER BY NEWID()) AS [@ordinal],TestCaseName AS [@name]
+          FROM #SelectedTests WHERE SchemaId=@SchemaId FOR XML PATH('Test'),ROOT('TestOrder'),TYPE);
+        SET @FixtureClassName=SCHEMA_NAME(@SchemaId);
+        EXEC tSQLt.Private_RunClassFixture @ClassName=@FixtureClassName,@Selected=@FixtureSelection;
+        INSERT @FixtureClasses VALUES(@SchemaId);
+      END;
+    END;
+    ELSE EXEC tSQLt.Private_RunTest @FullName,@SetUp,@CleanUp;
     FETCH NEXT FROM TestCursor INTO @FullName,@SchemaId;
   END;
   CLOSE TestCursor;

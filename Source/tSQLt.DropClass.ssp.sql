@@ -93,6 +93,8 @@ BEGIN
     SELECT @Cmd = xml.value('/', 'NVARCHAR(MAX)') 
       FROM StatementBlob;
 
+    IF OBJECT_ID('tSQLt.Private_ClassFixture','U') IS NOT NULL
+      DELETE tSQLt.Private_ClassFixture WHERE ClassId=SCHEMA_ID(@DroppedClassName);
     EXEC(@Cmd);
 /*SnipEnd: CreateDropClassStatement.ps1*/
 
