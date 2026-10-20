@@ -11,6 +11,65 @@ BEGIN
   EXEC tSQLt.AssertEquals 3,@Count;
 END;
 GO
+CREATE PROCEDURE AssertTableCasesTests.[test NULL empty and overlong case IDs are rejected]
+AS
+BEGIN
+  CREATE TABLE #Cases(Id NVARCHAR(MAX),E INT,A INT);
+  DECLARE @Ids TABLE(Id NVARCHAR(MAX));
+  INSERT @Ids VALUES(NULL),(N''),(REPLICATE(N'x',129));
+  DECLARE @Id NVARCHAR(MAX),@Caught BIT;
+  DECLARE C CURSOR LOCAL FAST_FORWARD FOR SELECT Id FROM @Ids;
+  OPEN C; FETCH NEXT FROM C INTO @Id;
+  WHILE @@FETCH_STATUS=0
+  BEGIN
+    DELETE #Cases;
+    INSERT #Cases VALUES(@Id,1,1);
+    SET @Caught=0;
+    BEGIN TRY
+      EXEC tSQLt.AssertTableCases '#Cases','Id','E','A';
+    END TRY
+    BEGIN CATCH
+      IF ERROR_MESSAGE() LIKE N'AssertTableCases: CaseId must%' SET @Caught=1;
+      ELSE EXEC tSQLt.Fail N'Unexpected case ID validation error.';
+    END CATCH;
+    IF @Caught=0 EXEC tSQLt.Fail N'Invalid case ID was accepted.';
+    FETCH NEXT FROM C INTO @Id;
+  END;
+  CLOSE C; DEALLOCATE C;
+END;
+GO
+CREATE PROCEDURE AssertTableCasesTests.[test quoted regular table names work and produce no result rows]
+AS
+BEGIN
+  CREATE TABLE AssertTableCasesTests.[日本'語]]表]([ID]]] NVARCHAR(10),E BIGINT,A BIGINT);
+  INSERT AssertTableCasesTests.[日本'語]]表] VALUES(N'一',9007199254740993,9007199254740993);
+  DECLARE @Before INT=(SELECT COUNT(*) FROM tSQLt.TestResult),@After INT;
+  EXEC tSQLt.AssertTableCases N'AssertTableCasesTests.[日本''語]]表]',N'ID]',N'E',N'A';
+  SELECT @After=COUNT(*) FROM tSQLt.TestResult;
+  EXEC tSQLt.AssertEquals @Before,@After;
+END;
+GO
+CREATE PROCEDURE AssertTableCasesTests.[test invalid table name cannot execute SQL]
+AS
+BEGIN
+  CREATE TABLE #Cases(Id NVARCHAR(10),E INT,A INT);
+  EXEC tSQLt.ExpectException @ExpectedMessagePattern=N'AssertTableCases: specify an existing table%';
+  EXEC tSQLt.AssertTableCases N'#Cases; DROP TABLE #Cases;',N'Id',N'E',N'A';
+END;
+GO
+CREATE PROCEDURE AssertTableCasesTests.[test bulk calculation errors do not report successful cases]
+AS
+BEGIN
+  EXEC tSQLt.NewTestClass N'TableCasesErrorFixture';
+  EXEC(N'CREATE PROCEDURE TableCasesErrorFixture.[test calculation] AS
+    CREATE TABLE #Cases(Id NVARCHAR(10),E INT,A INT);
+    INSERT #Cases VALUES(N''one'',1,NULL);
+    DECLARE @Zero INT=0;
+    UPDATE #Cases SET A=E/@Zero;
+    EXEC tSQLt.AssertTableCases ''#Cases'',''Id'',''E'',''A'';');
+  EXEC tSQLt_testutil.AssertTestErrors N'TableCasesErrorFixture.test calculation',N'%Divide by zero%';
+END;
+GO
 CREATE PROCEDURE AssertTableCasesTests.[test multiple mismatches include context and exact numeric differences]
 AS
 BEGIN
