@@ -195,7 +195,7 @@ BEGIN
         SET @Msg = ERROR_MESSAGE();
     END CATCH
 
-    IF @CaseId IS NOT NULL AND @CleanUp IS NOT NULL
+    IF (@CaseId IS NOT NULL OR OBJECT_ID('tempdb..#tSQLt_ActiveFixture') IS NOT NULL) AND @CleanUp IS NOT NULL
       EXEC tSQLt.Private_CleanUpCmdHandler @CleanUp, @Result OUT, @Msg OUT;
 
     --TODO:NoTran
@@ -263,9 +263,21 @@ CREATE PROCEDURE tSQLt.Private_RunTest
    @SetUp NVARCHAR(MAX) = NULL,
    @CleanUp NVARCHAR(MAX) = NULL,
    @CaseId NVARCHAR(MAX) = NULL,
-   @CaseResultId INT = NULL
+   @CaseResultId INT = NULL,
+   @FixtureResult NVARCHAR(MAX) = NULL OUTPUT,
+   @FixtureMessage NVARCHAR(MAX) = NULL OUTPUT,
+   @FixtureStart DATETIME2 = NULL OUTPUT,
+   @FixtureEnd DATETIME2 = NULL OUTPUT
 AS
 BEGIN
+    IF OBJECT_ID('tempdb..#tSQLt_ActiveFixture') IS NULL
+       AND EXISTS(SELECT 1 FROM tSQLt.Private_ClassFixture WHERE ClassId=(SELECT schema_id FROM sys.objects WHERE object_id=OBJECT_ID(@TestName)))
+    BEGIN
+      DECLARE @FixtureClass NVARCHAR(MAX)=OBJECT_SCHEMA_NAME(OBJECT_ID(@TestName));
+      EXEC tSQLt.Private_RunClassFixture @ClassName=@FixtureClass,@SingleTest=@TestName,@CaseId=@CaseId;
+      RETURN;
+    END;
+    SET @FixtureStart=SYSDATETIME();
     IF @CaseResultId IS NULL AND EXISTS(SELECT 1 FROM tSQLt.Private_CaseTest WHERE TestObjectId = OBJECT_ID(@TestName))
     BEGIN
       EXEC tSQLt.Private_RunCases @TestName, @SetUp, @CleanUp, @CaseId;
@@ -375,6 +387,11 @@ BEGIN
       --SET @TestEndTime = SYSDATETIME();
     END CATCH;
 ----------------------------------------------------------------------------------------------
+    IF OBJECT_ID('tempdb..#tSQLt_ActiveFixture') IS NOT NULL
+    BEGIN
+      SELECT @FixtureResult=@Result,@FixtureMessage=@Msg,@FixtureEnd=ISNULL(@TestEndTime,SYSDATETIME());
+      RETURN;
+    END;
     If(@Result NOT IN ('Success','Skipped'))
     BEGIN
       SET @Msg2 = @TestName + ' failed: (' + @Result + ') ' + @Msg;
@@ -493,6 +510,12 @@ BEGIN
             FROM sys.procedures P WHERE P.schema_id = @TestClassId AND LOWER(P.name) LIKE 'test%';
       END;
       SELECT @ExecutedOrder = (SELECT 1 AS [@version], @ClassName AS [@class] FOR XML PATH('TestOrder'),TYPE);
+      IF EXISTS(SELECT 1 FROM tSQLt.Private_ClassFixture WHERE ClassId=@TestClassId)
+      BEGIN
+        DECLARE @FixtureOrder XML=(SELECT Ordinal AS [@ordinal],TestName AS [@name] FROM @Tests ORDER BY Ordinal FOR XML PATH('Test'),ROOT('TestOrder'),TYPE);
+        EXEC tSQLt.Private_RunClassFixture @ClassName=@TestClassName,@Selected=@FixtureOrder,@ExecutedOrder=@ExecutedOrder OUTPUT;
+        RETURN;
+      END;
       DECLARE @Ordinal INT = 1;
       DECLARE @Entry XML;
       BEGIN TRY
@@ -515,6 +538,11 @@ BEGIN
       RETURN;
     END;
     
+    IF EXISTS(SELECT 1 FROM tSQLt.Private_ClassFixture WHERE ClassId=@TestClassId)
+    BEGIN
+      EXEC tSQLt.Private_RunClassFixture @ClassName=@TestClassName;
+      RETURN;
+    END;
     DECLARE @cmd NVARCHAR(MAX) = (
       (
         SELECT 'EXEC tSQLt.Private_RunTest '''+REPLACE(tSQLt.Private_GetQuotedFullName(object_id),'''','''''')+''', '+ISNULL(''''+REPLACE(@SetupProcName,'''','''''')+'''','NULL')+', '+ISNULL(''''+REPLACE(@CleanUpProcName,'''','''''')+'''','NULL')+';'
@@ -634,6 +662,17 @@ BEGIN
 
   CREATE TABLE #TestClassesForRunCursor(Name NVARCHAR(MAX) COLLATE DATABASE_DEFAULT);
   EXEC @GetCursorCallback;
+  IF EXISTS(SELECT 1 FROM #TestClassesForRunCursor C JOIN tSQLt.Private_ClassFixture F
+              ON F.ClassId=tSQLt.Private_GetSchemaId(C.Name))
+     AND (@@TRANCOUNT<>0 OR EXISTS(
+       SELECT 1 FROM #TestClassesForRunCursor C JOIN sys.procedures P
+         ON P.schema_id=tSQLt.Private_GetSchemaId(C.Name) AND LOWER(P.name) LIKE N'test%'
+       CROSS APPLY tSQLt.Private_ListTestAnnotations(P.object_id) A
+       WHERE A.Annotation LIKE N'tSQLt.[[]@tSQLt:NoTransaction]%'))
+  BEGIN
+    RAISERROR('Fixture execution plans require no caller transaction and cannot contain NoTransaction.',16,10);
+    RETURN;
+  END;
 ----  
   DECLARE @cmd NVARCHAR(MAX) = (
     (
@@ -699,6 +738,11 @@ CREATE PROCEDURE tSQLt.Private_RunMethodHandler
   @CaseId NVARCHAR(MAX) = NULL
 AS
 BEGIN
+  IF OBJECT_ID('tempdb..#tSQLt_ActiveFixture') IS NOT NULL
+  BEGIN
+    RAISERROR('Nested test execution is not supported during a class fixture.',16,10);
+    RETURN;
+  END;
   SELECT @TestResultFormatter = ISNULL(@TestResultFormatter,tSQLt.GetTestResultFormatter());
 
   EXEC tSQLt.Private_Init;

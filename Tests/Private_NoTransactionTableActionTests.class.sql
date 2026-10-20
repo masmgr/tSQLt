@@ -24,6 +24,7 @@ BEGIN
     SELECT '[tSQLt].[Run_LastExecution]',       'Hide' UNION ALL
     SELECT '[tSQLt].[Private_Configurations]',  'Restore' UNION ALL
     SELECT '[tSQLt].[Private_CaseTest]',        'Restore' UNION ALL
+    SELECT '[tSQLt].[Private_ClassFixture]',    'Restore' UNION ALL
     SELECT '[tSQLt].[CaptureOutputLog]',        'Truncate'  UNION ALL
     SELECT '[tSQLt].[Private_RenamedObjectLog]','Ignore'  UNION ALL
     SELECT '[tSQLt].[Private_Seize]','Ignore'  UNION ALL

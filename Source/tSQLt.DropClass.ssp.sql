@@ -6,6 +6,8 @@ CREATE PROCEDURE tSQLt.DropClass
 AS
 BEGIN
     DECLARE @DroppedClassName NVARCHAR(MAX) = SCHEMA_NAME(ISNULL(SCHEMA_ID(@ClassName), SCHEMA_ID(PARSENAME(@ClassName,1))));
+    IF OBJECT_ID('tSQLt.Private_ClassFixture','U') IS NOT NULL
+      DELETE tSQLt.Private_ClassFixture WHERE ClassId=SCHEMA_ID(@DroppedClassName);
 /*SnipStart: CreateDropClassStatement.ps1*/
     DECLARE @Cmd NVARCHAR(MAX);
 

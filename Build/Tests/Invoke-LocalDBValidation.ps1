@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$InstanceName = 'tSQLtValidation',
-    [string[]]$TestClasses = @('CollationTests','AssertTableCasesTests','ExactTableStringTests','AssertEqualsTableByKeyTests','AssertEqualsStringExactTests','CaseTests','SelectedTestsTests','Run_Methods_Tests'),
+    [string[]]$TestClasses = @('CollationTests','AssertTableCasesTests','ExactTableStringTests','ClassFixtureTests','AssertEqualsTableByKeyTests','AssertEqualsStringExactTests','CaseTests','SelectedTestsTests','Run_Methods_Tests'),
     [switch]$KeepDatabases
 )
 $ErrorActionPreference = 'Stop'
@@ -75,6 +75,8 @@ try {
             Invoke-Sql ([IO.File]::ReadAllText("$root/TestUtil/tSQLt_testutil.class.sql"))
             Invoke-Sql "CREATE ASSEMBLY tSQLtTestUtilCLR FROM $utilHex WITH PERMISSION_SET=SAFE;"
             Invoke-Sql ([IO.File]::ReadAllText("$root/TestUtil/tSQLtTestUtilCLR_CreateItems.sql"))
+            Invoke-Sql ([IO.File]::ReadAllText("$root/Tests/ClassFixture.Client.sql"))
+            Write-Host "ClassFixture client scenarios passed (contained=$contained)"
             foreach ($class in $TestClasses) {
                 if ($class -notmatch '^[A-Za-z0-9_]+$') { throw 'Invalid test class.' }
                 Invoke-Sql ([IO.File]::ReadAllText("$root/Tests/$class.class.sql"))

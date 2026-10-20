@@ -176,11 +176,21 @@ jobs:
             Stop-Transcript
           }
 
+      - name: Test class fixture client lifecycle
+        shell: pwsh
+        run: |
+          ./Build/Tests/Test-ClassFixture.ps1 `
+            -ServerName $env:SQL_SERVER `
+            -UserName sa `
+            -Password (ConvertTo-SecureString $env:SA_PASSWORD -AsPlainText -Force) `
+            -InstallScript "$env:RUNNER_TEMP/tSQLt-uninstall-package/tSQLt.class.sql" `
+            -ResultFile ./Build/output/ClassFixture/TestResults_ClassFixture.xml
+
       - name: Summarize test results
         if: always()
         shell: pwsh
         run: |
-          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results, ./Build/output/StandaloneUninstall, ./Build/output/Issue222, ./Build/output/ExecutionOrder -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
+          $resultFiles = Get-ChildItem -Path ./Build/temp/Validate/Results, ./Build/output/StandaloneUninstall, ./Build/output/Issue222, ./Build/output/ExecutionOrder, ./Build/output/ClassFixture -Filter 'TestResults*.xml' -Recurse -ErrorAction SilentlyContinue
           $summary = @("### tSQLt test results (SQL Server ${{ matrix.sqlserver }})", "", "| Suite | Tests | Failures | Errors | Skipped |", "|---|---:|---:|---:|---:|")
           $totalTests = 0
           $totalFailures = 0
@@ -211,6 +221,7 @@ jobs:
             Build/output/StandaloneUninstall/
             Build/output/Issue222/
             Build/output/ExecutionOrder/
+            Build/output/ClassFixture/
             ${{ runner.temp }}/tSQLt-logs/
           if-no-files-found: warn
           retention-days: 30
