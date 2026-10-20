@@ -82,7 +82,7 @@ try {
                 Invoke-Sql "EXEC tSQLt.SetSummaryError 0; EXEC tSQLt.Run @TestName=N'$class';"
                 $failures=Get-Value "SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result<>'Success';"
                 $count=Get-Value 'SELECT COUNT(*) FROM tSQLt.TestResult;'
-                $xml=Get-Value "SELECT Class AS [@classname],TestCase AS [@name],Result AS [@result],Msg AS [message] FROM tSQLt.TestResult ORDER BY Id FOR XML PATH('testcase'),ROOT('testsuite');"
+                $xml=Get-Value "SELECT CONVERT(NVARCHAR(MAX),(SELECT Class AS [@classname],TestCase AS [@name],Result AS [@result],Msg AS [message] FROM tSQLt.TestResult ORDER BY Id FOR XML PATH('testcase'),ROOT('testsuite'),TYPE));"
                 [IO.File]::WriteAllText("$output/$class-contained$contained.xml",[string]$xml)
                 if ($failures -or !$count) { throw "$class failed: $failures failures in $count tests (contained=$contained). See $output." }
                 Write-Host "$class : $count passed (contained=$contained)"
