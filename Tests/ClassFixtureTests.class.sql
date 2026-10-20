@@ -8,6 +8,20 @@ BEGIN
   EXEC(N'CREATE PROCEDURE FixtureRegistration.OtherPrepare AS RETURN;');
 END;
 GO
+CREATE PROCEDURE ClassFixtureTests.[test legacy NoTransaction restores fixture registrations]
+AS
+BEGIN
+  EXEC tSQLt.RegisterClassFixture N'FixtureRegistration',N'FixtureRegistration.Prepare';
+  EXEC tSQLt.NewTestClass N'FixtureLegacy';
+  EXEC(N'--[@'+'tSQLt:NoTransaction](DEFAULT)
+CREATE PROCEDURE FixtureLegacy.[test legacy] AS DELETE tSQLt.Private_ClassFixture;');
+  EXEC tSQLt.Run N'FixtureLegacy.test legacy',N'tSQLt.NullTestResultFormatter';
+  DECLARE @Succeeded INT=(SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result=N'Success');
+  EXEC tSQLt.AssertEquals 1,@Succeeded;
+  DECLARE @Count INT=(SELECT COUNT(*) FROM tSQLt.Private_ClassFixture WHERE ClassId=SCHEMA_ID(N'FixtureRegistration'));
+  EXEC tSQLt.AssertEquals 1,@Count;
+END;
+GO
 CREATE PROCEDURE ClassFixtureTests.[test registration replaces and unregisters]
 AS
 BEGIN

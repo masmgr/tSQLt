@@ -62,6 +62,9 @@ EXEC tSQLt.RegisterClassFixture N'FixtureSecond',N'FixtureSecond.Prepare';
 EXEC tSQLt.RunNew;
 IF (SELECT COUNT(*) FROM tSQLt.TestResult)<>1 OR EXISTS(SELECT 1 FROM tSQLt.TestResult WHERE Class<>N'FixtureSecond' OR Result<>N'Success')
   RAISERROR('RunNew fixture scope failed.',16,10);
+EXEC tSQLt.RunSelected @NamePattern=N'Fixture%.test %';
+IF (SELECT COUNT(*) FROM tSQLt.TestResult)<>5 OR EXISTS(SELECT 1 FROM tSQLt.TestResult WHERE Result<>N'Success')
+  RAISERROR('Results from multiple fixture classes were lost.',16,10);
 EXEC tSQLt.DropClass N'FixtureSecond';
 
 -- Ordinary failure keeps the fixture alive; a full rollback stops the remainder.
@@ -76,6 +79,20 @@ IF (SELECT COUNT(*) FROM tSQLt.TestResult)<>3
    OR (SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result=N'Success')<>1
    OR (SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result=N'Error')<>2 OR @@TRANCOUNT<>0
   RAISERROR('Rollback lost result buffer or leaked transaction.',16,10);
+INSERT tSQLt.TestResult(Class,TestCase,Result) VALUES(N'PreviousClass',N'completed',N'Success');
+DECLARE @PriorCount INT=(SELECT COUNT(*) FROM tSQLt.TestResult);
+EXEC tSQLt.Private_RunClassFixture @ClassName=N'FixtureClient',
+  @Selected=N'<TestOrder><Test ordinal="1" name="test Rollback"/></TestOrder>';
+IF (SELECT COUNT(*) FROM tSQLt.TestResult)<>@PriorCount+1
+   OR NOT EXISTS(SELECT 1 FROM tSQLt.TestResult WHERE Class=N'PreviousClass' AND Result=N'Success')
+  RAISERROR('Transaction loss discarded earlier class results.',16,10);
+EXEC(N'CREATE PROCEDURE FixtureClient.[test CaseRollback] @CaseId NVARCHAR(128) AS ROLLBACK;');
+EXEC tSQLt.RegisterCaseTest N'FixtureClient.test CaseRollback',N'FixtureClient.Provider';
+EXEC tSQLt.Run N'FixtureClient.test CaseRollback';
+IF (SELECT COUNT(*) FROM tSQLt.TestResult)<>2
+   OR (SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result=N'Error' AND CaseState=N'Completed')<>1
+   OR (SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result=N'Error' AND CaseState=N'NotRun')<>1
+  RAISERROR('Transaction loss did not preserve case execution states.',16,10);
 
 EXEC(N'ALTER PROCEDURE FixtureClient.ClassSetUp AS RAISERROR(''Setup failed deliberately.'',16,10);');
 EXEC tSQLt.Run N'FixtureClient',@TestOrder=N'<TestOrder version="1" class="FixtureClient"><Test ordinal="1" name="test A"/><Test ordinal="2" name="test B"/></TestOrder>';
@@ -123,7 +140,7 @@ END CATCH;
 ROLLBACK;
 IF @Rejected=0 RAISERROR('Caller transaction was accepted.',16,10);
 EXEC(N'CREATE PROCEDURE FixtureClient.[test NoTran]
---[@tSQLt:NoTransaction]
+--[@tSQLt:NoTransaction](DEFAULT)
 AS RETURN;');
 SET @Rejected=0;
 BEGIN TRY
