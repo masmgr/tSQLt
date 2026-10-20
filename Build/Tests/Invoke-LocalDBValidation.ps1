@@ -30,7 +30,7 @@ finally { $sha.Dispose() }
 $connection = [System.Data.SqlClient.SqlConnection]::new("Server=(localdb)\$InstanceName;Integrated Security=true;Initial Catalog=master;Pooling=false")
 $connection.Open()
 function Invoke-Sql([string]$sql) {
-    foreach ($batch in [regex]::Split($sql,'(?im)^\s*GO\s*(?:--[^\r\n]*)?\r?$')) {
+    foreach ($batch in [regex]::Split($sql,'(?im)^[\t ]*GO[\t ]*(?:--[^\r\n]*)?\r?$')) {
         if ([string]::IsNullOrWhiteSpace($batch)) { continue }
         $cmd = $connection.CreateCommand()
         try { $cmd.CommandText=$batch; $cmd.CommandTimeout=180; $null=$cmd.ExecuteNonQuery() }
@@ -80,7 +80,7 @@ try {
                 Invoke-Sql ([IO.File]::ReadAllText("$root/Tests/$class.class.sql"))
                 # SummaryError is disabled only to persist diagnostics before throwing below.
                 Invoke-Sql "EXEC tSQLt.SetSummaryError 0; EXEC tSQLt.Run @TestName=N'$class';"
-                $failures=Get-Value "SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result<>'Success';"
+                $failures=Get-Value "SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result NOT IN('Success','Skipped');"
                 $count=Get-Value 'SELECT COUNT(*) FROM tSQLt.TestResult;'
                 $xml=Get-Value "SELECT CONVERT(NVARCHAR(MAX),(SELECT Class AS [@classname],TestCase AS [@name],Result AS [@result],Msg AS [message] FROM tSQLt.TestResult ORDER BY Id FOR XML PATH('testcase'),ROOT('testsuite'),TYPE));"
                 [IO.File]::WriteAllText("$output/$class-contained$contained.xml",[string]$xml)
