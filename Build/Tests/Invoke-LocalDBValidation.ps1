@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$InstanceName = 'tSQLtValidation',
-    [string[]]$TestClasses = @('CollationTests','AssertEqualsTableByKeyTests','AssertEqualsStringExactTests','CaseTests','SelectedTestsTests'),
+    [string[]]$TestClasses = @('CollationTests','AssertTableCasesTests','AssertEqualsTableByKeyTests','AssertEqualsStringExactTests','CaseTests','SelectedTestsTests'),
     [switch]$KeepDatabases
 )
 $ErrorActionPreference = 'Stop'

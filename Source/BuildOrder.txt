@@ -108,6 +108,8 @@ tSQLt.AssertAlmostEquals.ssp.sql
 tSQLt.Private_CompareStringExact.sfn.sql
 tSQLt.Private_FormatStringExact.sfn.sql
 tSQLt.AssertEqualsStringExact.ssp.sql
+tSQLt.Private_CompareTableCases.ssp.sql
+tSQLt.AssertTableCases.ssp.sql
 tSQLt.AssertEqualsTable.ssp.sql
 tSQLt.Private_AssertProcedureCalls.ssp.sql
 tSQLt.AssertProcedureCalls.ssp.sql
