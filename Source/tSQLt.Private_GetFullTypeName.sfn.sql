@@ -6,7 +6,7 @@ RETURNS TABLE
 AS
 RETURN SELECT X.SchemaName + '.' + X.Name + X.Suffix + X.Collation AS TypeName, X.SchemaName, X.Name, X.Suffix, X.is_table_type AS IsTableType
 FROM(
-  SELECT QUOTENAME(SCHEMA_NAME(T.schema_id)) SchemaName, QUOTENAME(T.name) Name,
+  SELECT QUOTENAME(SCHEMA_NAME(T.schema_id)) COLLATE DATABASE_DEFAULT SchemaName, QUOTENAME(T.name) COLLATE DATABASE_DEFAULT Name,
               CASE WHEN T.max_length = -1
                     THEN ''
                    WHEN @Length = -1

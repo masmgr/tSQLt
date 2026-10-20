@@ -44,13 +44,13 @@ BEGIN
     SET @Expected = CASE WHEN @IsTemp = 1 THEN QUOTENAME(@ExpectedName)
                         ELSE QUOTENAME(OBJECT_SCHEMA_NAME(@ExpectedId)) + '.' + QUOTENAME(OBJECT_NAME(@ExpectedId)) END;
 
-    DECLARE @Columns TABLE(name SYSNAME, column_id INT, CollationName SYSNAME NULL);
+    DECLARE @Columns TABLE(name SYSNAME COLLATE DATABASE_DEFAULT, column_id INT, CollationName SYSNAME NULL);
     INSERT INTO @Columns(name, column_id)
-      SELECT name, column_id FROM sys.columns WHERE @IsTemp = 0 AND object_id = @ExpectedId
+      SELECT name COLLATE DATABASE_DEFAULT, column_id FROM sys.columns WHERE @IsTemp = 0 AND object_id = @ExpectedId
       UNION ALL
-      SELECT name, column_id FROM tempdb.sys.columns WHERE @IsTemp = 1 AND object_id = @ExpectedId;
+      SELECT name COLLATE DATABASE_DEFAULT, column_id FROM tempdb.sys.columns WHERE @IsTemp = 1 AND object_id = @ExpectedId;
     IF EXISTS(SELECT 1 FROM @Columns C WHERE C.name <> '_id_' AND NOT EXISTS
-                (SELECT 1 FROM sys.columns L WHERE L.object_id = OBJECT_ID(@Log) AND L.name = C.name AND L.is_identity = 0))
+                (SELECT 1 FROM sys.columns L WHERE L.object_id = OBJECT_ID(@Log) AND L.name COLLATE DATABASE_DEFAULT = C.name AND L.is_identity = 0))
     BEGIN
       RAISERROR('AssertProcedureCalls: expected table contains an unknown argument column.',16,10);
       RETURN;
@@ -64,7 +64,7 @@ BEGIN
     -- Temporary expectations can inherit a different tempdb collation. Compare
     -- text using the log column's collation, including its case sensitivity.
     UPDATE C SET CollationName = L.collation_name FROM @Columns C
-      JOIN sys.columns L ON L.object_id = OBJECT_ID(@Log) AND L.name = C.name;
+      JOIN sys.columns L ON L.object_id = OBJECT_ID(@Log) AND L.name COLLATE DATABASE_DEFAULT = C.name;
 
     DECLARE @ColumnList NVARCHAR(MAX);
     SELECT @ColumnList = STUFF((SELECT ',' + QUOTENAME(name) +

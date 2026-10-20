@@ -292,7 +292,7 @@ BEGIN
     CREATE TABLE #ExpectException(ExpectException INT,ExpectedMessage NVARCHAR(MAX), ExpectedSeverity INT, ExpectedState INT, ExpectedMessagePattern NVARCHAR(MAX), ExpectedErrorNumber INT, FailMessage NVARCHAR(MAX));
     CREATE TABLE #SkipTest(SkipTestMessage NVARCHAR(MAX) DEFAULT '');
     CREATE TABLE #NoTransaction(OrderId INT IDENTITY(1,1),CleanUpProcedureName NVARCHAR(MAX));
-    CREATE TABLE #TableBackupLog(OriginalName NVARCHAR(MAX), BackupName NVARCHAR(MAX));
+    CREATE TABLE #TableBackupLog(OriginalName NVARCHAR(MAX) COLLATE DATABASE_DEFAULT, BackupName NVARCHAR(MAX) COLLATE DATABASE_DEFAULT);
 
 
     IF EXISTS (SELECT 1 FROM sys.extended_properties WHERE name = N'SetFakeViewOnTrigger')
@@ -473,7 +473,7 @@ BEGIN
            OR EXISTS(
              SELECT 1 FROM @Input I
               WHERE NOT EXISTS(SELECT 1 FROM sys.procedures P
-                                WHERE P.schema_id = @TestClassId AND P.name = I.TestName
+                                WHERE P.schema_id = @TestClassId AND P.name COLLATE DATABASE_DEFAULT = I.TestName
                                   AND LOWER(P.name) LIKE 'test%')
            )
         BEGIN
@@ -481,7 +481,7 @@ BEGIN
           RETURN -1;
         END;
         INSERT @Tests SELECT I.Ordinal, P.name FROM @Input I JOIN sys.procedures P
-          ON P.schema_id = @TestClassId AND P.name = I.TestName;
+          ON P.schema_id = @TestClassId AND P.name COLLATE DATABASE_DEFAULT = I.TestName;
       END;
       ELSE
       BEGIN
@@ -632,7 +632,7 @@ BEGIN
   DECLARE @TestClassName NVARCHAR(MAX);
   DECLARE @TestProcName NVARCHAR(MAX);
 
-  CREATE TABLE #TestClassesForRunCursor(Name NVARCHAR(MAX));
+  CREATE TABLE #TestClassesForRunCursor(Name NVARCHAR(MAX) COLLATE DATABASE_DEFAULT);
   EXEC @GetCursorCallback;
 ----  
   DECLARE @cmd NVARCHAR(MAX) = (
@@ -675,7 +675,7 @@ BEGIN
           (
             SELECT 1
               FROM tSQLt.Private_PreviousTestClassList AS PTC
-             WHERE PTC.ClassName = TC.Name
+             WHERE PTC.ClassName = TC.Name COLLATE DATABASE_DEFAULT
           );
 END;
 GO

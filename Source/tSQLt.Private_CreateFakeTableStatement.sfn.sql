@@ -22,7 +22,7 @@ RETURN
       (
         SELECT
            ',' +
-           QUOTENAME(name) + 
+           QUOTENAME(name) COLLATE DATABASE_DEFAULT + 
            cc.ColumnDefinition +
            dc.DefaultDefinition + 
            id.IdentityDefinition +

@@ -32,7 +32,7 @@ BEGIN
       END;
       ELSE IF (@TableAction = 'Hide')
       BEGIN
-        IF (NOT EXISTS (SELECT 1 FROM tSQLt.Private_RenamedObjectLog ROL WHERE QUOTENAME(OBJECT_SCHEMA_NAME(ROL.ObjectId))+'.'+OriginalName = @FullTableName))
+        IF (NOT EXISTS (SELECT 1 FROM tSQLt.Private_RenamedObjectLog ROL WHERE QUOTENAME(OBJECT_SCHEMA_NAME(ROL.ObjectId)) COLLATE DATABASE_DEFAULT+'.'+OriginalName = @FullTableName))
         BEGIN
           IF(OBJECT_ID(@FullTableName) IS NULL)
           BEGIN

@@ -25,7 +25,7 @@ RETURN
            ELSE '{Index Type Not Supported!}' 
          END +
          ' INDEX ' +
-         QUOTENAME(I.name)+
+         QUOTENAME(I.name) COLLATE DATABASE_DEFAULT+
          ' ON ' + QUOTENAME(OBJECT_SCHEMA_NAME(@object_id)) + '.' + QUOTENAME(OBJECT_NAME(@object_id)) +
          CASE WHEN I.type NOT IN (5)
            THEN
@@ -35,7 +35,7 @@ RETURN
            ELSE ''
          END +
          CASE WHEN I.has_filter = 1
-           THEN 'WHERE' + I.filter_definition
+           THEN 'WHERE' + I.filter_definition COLLATE DATABASE_DEFAULT
            ELSE ''
          END +
          CASE WHEN I.is_hypothetical = 1
