@@ -82,10 +82,25 @@ try {
                 Invoke-Sql "EXEC tSQLt.SetSummaryError 0; EXEC tSQLt.Run @TestName=N'$class';"
                 $failures=Get-Value "SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result NOT IN('Success','Skipped');"
                 $count=Get-Value 'SELECT COUNT(*) FROM tSQLt.TestResult;'
+                $skipped=Get-Value "SELECT COUNT(*) FROM tSQLt.TestResult WHERE Result='Skipped';"
                 $xml=Get-Value "SELECT CONVERT(NVARCHAR(MAX),(SELECT Class AS [@classname],TestCase AS [@name],Result AS [@result],Msg AS [message] FROM tSQLt.TestResult ORDER BY Id FOR XML PATH('testcase'),ROOT('testsuite'),TYPE));"
-                [IO.File]::WriteAllText("$output/$class-contained$contained.xml",[string]$xml)
+                [xml]$report=$xml
+                $report.testsuite.SetAttribute('name',"$class-contained$contained")
+                $report.testsuite.SetAttribute('tests',[string]$count)
+                $report.testsuite.SetAttribute('failures',[string]$failures)
+                $report.testsuite.SetAttribute('errors','0')
+                $report.testsuite.SetAttribute('skipped',[string]$skipped)
+                foreach ($case in $report.testsuite.testcase) {
+                    if ($case.result -eq 'Skipped') { $null=$case.AppendChild($report.CreateElement('skipped')) }
+                    elseif ($case.result -ne 'Success') {
+                        $failure=$report.CreateElement('failure')
+                        $failure.InnerText=[string]$case.message
+                        $null=$case.AppendChild($failure)
+                    }
+                }
+                $report.Save("$output/$class-contained$contained.xml")
                 if ($failures -or !$count) { throw "$class failed: $failures failures in $count tests (contained=$contained). See $output." }
-                Write-Host "$class : $count passed (contained=$contained)"
+                Write-Host "$class : $($count-$skipped) passed, $skipped skipped (contained=$contained)"
             }
             Invoke-Sql 'EXEC tSQLt.Uninstall;'
             if ((Get-Value "SELECT COUNT(*) FROM sys.schemas WHERE name=N'tSQLt';") -ne 0) { throw 'Uninstall left tSQLt schema.' }
