@@ -8,7 +8,7 @@ RETURN SELECT
               COALESCE(IsDefault, 0) AS IsDefault,
               COALESCE(DefaultDefinition, '') AS DefaultDefinition
         FROM (SELECT 1) X(X)
-        LEFT JOIN (SELECT 1 AS IsDefault,' DEFAULT '+ definition AS DefaultDefinition,parent_object_id,parent_column_id
+        LEFT JOIN (SELECT 1 AS IsDefault,' DEFAULT '+ definition COLLATE DATABASE_DEFAULT AS DefaultDefinition,parent_object_id,parent_column_id
                      FROM sys.default_constraints
                   )dc
                ON dc.parent_object_id = @ObjectId

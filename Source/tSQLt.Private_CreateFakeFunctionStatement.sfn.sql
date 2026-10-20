@@ -21,7 +21,7 @@ RETURN
           (
             SELECT 
               CASE P.is_output 
-              WHEN 0 THEN CASE WHEN P._RN_ = 1 THEN '' ELSE ',' END +P.name+' '+T.TypeName
+              WHEN 0 THEN CASE WHEN P._RN_ = 1 THEN '' ELSE ',' END +P.name COLLATE DATABASE_DEFAULT+' '+T.TypeName
               WHEN 1 THEN ') RETURNS '+T.TypeName+' AS BEGIN RETURN CAST('+ISNULL(''''+@ReturnValue+'''','NULL')+' AS '+T.TypeName+'); END'
               END
               FROM 
@@ -59,7 +59,7 @@ RETURN
                 THEN 'SELECT TOP(0) ' 
                 ELSE ',' 
               END + 
-              'CAST(NULL AS '+T.TypeName+') AS '+QUOTENAME(P.name)
+              'CAST(NULL AS '+T.TypeName+') AS '+QUOTENAME(P.name) COLLATE DATABASE_DEFAULT
               FROM 
               (
                 SELECT

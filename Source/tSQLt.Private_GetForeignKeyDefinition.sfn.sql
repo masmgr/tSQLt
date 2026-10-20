@@ -53,9 +53,9 @@ RETURN SELECT 'CONSTRAINT ' + name + ' FOREIGN KEY (' +
                 ELSE '' 
               END CreIdxCmd
          FROM (SELECT QUOTENAME(SCHEMA_NAME(k.schema_id)) AS SchemaName,
-                      QUOTENAME(k.name) AS name,
+                      QUOTENAME(k.name) COLLATE DATABASE_DEFAULT AS name,
                       QUOTENAME(OBJECT_NAME(k.parent_object_id)) AS parName,
-                      QUOTENAME(SCHEMA_NAME(refTab.schema_id)) + '.' + QUOTENAME(refTab.name) AS refName,
+                      QUOTENAME(SCHEMA_NAME(refTab.schema_id)) + '.' + QUOTENAME(refTab.name) COLLATE DATABASE_DEFAULT AS refName,
                       parCol.ColNames AS parCols,
                       refCol.ColNames AS refCols,
                       'ON UPDATE '+
@@ -80,7 +80,7 @@ RETURN SELECT 'CONSTRAINT ' + name + ' FOREIGN KEY (' +
                  CROSS APPLY tSQLt.Private_GetForeignKeyRefColumns(k.object_id) AS refCol
                  LEFT JOIN sys.extended_properties e
                    ON e.name = 'tSQLt.Private_TestDouble_OrgObjectName'
-                  AND e.value = OBJECT_NAME(k.referenced_object_id)
+                  AND CONVERT(NVARCHAR(MAX),e.value) COLLATE DATABASE_DEFAULT = OBJECT_NAME(k.referenced_object_id) COLLATE DATABASE_DEFAULT
                  JOIN sys.tables refTab
                    ON COALESCE(e.major_id,k.referenced_object_id) = refTab.object_id
                 WHERE k.parent_object_id = OBJECT_ID(QUOTENAME(@SchemaName) + '.' + QUOTENAME(@ParentTableName))
